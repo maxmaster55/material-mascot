@@ -9,6 +9,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -23,12 +24,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.sin
 
 /**
@@ -47,6 +50,11 @@ fun MaterialMascot(
     if (!config.enabled) return
 
     var phase by remember { mutableFloatStateOf(0f) }
+    var gazeStep by remember { mutableIntStateOf(0) }
+
+    // The body has a continuous clock, while gaze targets change more slowly.
+    // Animating between those targets reads as attention rather than a looping
+    // texture, and remains deterministic/offline for previews and tests.
     LaunchedEffect(config.motion) {
         if (!config.motion) {
             phase = 0f
@@ -58,6 +66,30 @@ fun MaterialMascot(
             delay(32L)
         }
     }
+    LaunchedEffect(config.motion) {
+        if (!config.motion) {
+            gazeStep = 0
+            return@LaunchedEffect
+        }
+        while (isActive) {
+            delay(1050L)
+            gazeStep += 1
+        }
+    }
+
+    val gazeTargetX = if (config.motion) {
+        (sin(gazeStep.toDouble() * 1.37).toFloat() * 0.62f +
+            sin(gazeStep.toDouble() * 0.41 + 0.8).toFloat() * 0.2f).coerceIn(-0.78f, 0.78f)
+    } else 0f
+    val gazeTargetY = if (config.motion) {
+        (cos(gazeStep.toDouble() * 1.11 + 0.5).toFloat() * 0.35f +
+            sin(gazeStep.toDouble() * 0.29).toFloat() * 0.16f).coerceIn(-0.55f, 0.55f)
+    } else 0f
+    val gazeSpec: FiniteAnimationSpec<Float> = if (config.motion) {
+        tween(durationMillis = 720, easing = FastOutSlowInEasing)
+    } else snap()
+    val gazeX by animateFloatAsState(gazeTargetX, gazeSpec, label = "mascot-gaze-x")
+    val gazeY by animateFloatAsState(gazeTargetY, gazeSpec, label = "mascot-gaze-y")
 
     // Expressions are continuous face poses, not swapped drawings. Hosts can
     // react to idle/thinking/reply state simply by changing `expression`; eyes
@@ -87,21 +119,36 @@ fun MaterialMascot(
     else modifier.semantics { this.contentDescription = contentDescription }
 
     Canvas(descriptionModifier) {
-    val accent = if (config.color != Color.Unspecified) config.color else Color(0xFF6D5ACF)
+        val accent = if (config.color != Color.Unspecified) config.color else Color(0xFF6D5ACF)
         val ink = Color.Black.copy(alpha = 0.72f)
-        val lift = if (config.motion) sin(phase) * size.minDimension * 0.035f else 0f
-        // One quick natural blink per bob cycle. Sleepy scales the eyes down
-        // independently, so changing expression and blinking compose cleanly.
+        // At rest the book-wisp stays grounded; only a happy reply gets a
+        // small celebratory body morph. Gaze drift and blinking carry idle life.
+        val bodyMotion = (happy + sleepy * 0.22f).coerceIn(0f, 1f)
+        val lift = if (config.motion) {
+            bodyMotion * sin(phase) * size.minDimension * 0.022f
+        } else 0f
+        // One quick natural blink per cycle. The reactive transform is subtle
+        // enough for a header, but gives a reply a living silhouette.
         val blink = if (config.motion) {
             ((sin(phase) - 0.93f) / 0.07f).coerceIn(0f, 1f)
         } else 0f
         val eyeOpen = ((1f - sleepy * 0.86f) * (1f - blink)).coerceIn(0.08f, 1f)
         val center = Offset(size.width / 2f, size.height / 2f + lift)
-        when (config.style) {
-            MascotStyle.BOOK_WISP ->
-                drawBookWisp(center, size.minDimension, accent, ink, eyeOpen, curious, happy, sleepy)
-            MascotStyle.SPARK ->
-                drawSpark(center, size.minDimension, accent, ink, eyeOpen, curious, happy, sleepy)
+        val tilt = if (config.motion) {
+            bodyMotion * (sin(phase * 0.5f + 0.4f) * 1.8f + gazeX * 1.1f)
+        } else 0f
+        val squash = if (config.motion) bodyMotion * sin(phase * 2f) * 0.018f else 0f
+
+        withTransform({
+            rotate(tilt, center)
+            scale(1f - squash, 1f + squash, center)
+        }) {
+            when (config.style) {
+                MascotStyle.BOOK_WISP ->
+                    drawBookWisp(center, size.minDimension, accent, ink, eyeOpen, curious, happy, sleepy, gazeX, gazeY)
+                MascotStyle.SPARK ->
+                    drawSpark(center, size.minDimension, accent, ink, eyeOpen, curious, happy, sleepy, gazeX, gazeY)
+            }
         }
     }
 }
@@ -114,7 +161,9 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBookWisp(
     eyeOpen: Float,
     curious: Float,
     happy: Float,
-    sleepy: Float
+    sleepy: Float,
+    gazeX: Float,
+    gazeY: Float
 ) {
     val unit = diameter / 100f
     val body = Rect(
@@ -147,7 +196,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBookWisp(
         end = Offset(center.x, center.y + 22f * unit),
         strokeWidth = 1.5f * unit
     )
-    drawEyes(center, unit, ink, eyeOpen, curious)
+    drawEyes(center, unit, ink, eyeOpen, curious, gazeX, gazeY)
     drawExpression(center, unit, ink, curious, happy, sleepy)
 }
 
@@ -159,7 +208,9 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSpark(
     eyeOpen: Float,
     curious: Float,
     happy: Float,
-    sleepy: Float
+    sleepy: Float,
+    gazeX: Float,
+    gazeY: Float
 ) {
     val unit = diameter / 100f
     drawCircle(accent, radius = 31f * unit, center = center)
@@ -169,7 +220,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSpark(
         val end = Offset(center.x + sin(angle.toFloat()) * 41f * unit, center.y - kotlin.math.cos(angle).toFloat() * 41f * unit)
         drawLine(accent.copy(alpha = 0.72f), start, end, strokeWidth = 3f * unit)
     }
-    drawEyes(center, unit, ink, eyeOpen, curious)
+    drawEyes(center, unit, ink, eyeOpen, curious, gazeX, gazeY)
     drawExpression(center, unit, ink, curious, happy, sleepy)
 }
 
@@ -178,22 +229,43 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawEyes(
     unit: Float,
     ink: Color,
     eyeOpen: Float,
-    curious: Float
+    curious: Float,
+    gazeX: Float,
+    gazeY: Float
 ) {
-    val leftHeight = (8f * eyeOpen * (1f + 0.18f * curious)).coerceAtLeast(1.2f)
-    val rightHeight = (8f * eyeOpen * (1f - 0.12f * curious)).coerceAtLeast(1.2f)
-    drawRoundRect(
-        color = ink,
-        topLeft = Offset(center.x - 16f * unit, center.y - 4f * unit - leftHeight * unit / 2f),
-        size = Size(6f * unit, leftHeight * unit),
-        cornerRadius = CornerRadius(3f * unit)
-    )
-    drawRoundRect(
-        color = ink,
-        topLeft = Offset(center.x + 10f * unit, center.y - 4f * unit - rightHeight * unit / 2f),
-        size = Size(6f * unit, rightHeight * unit),
-        cornerRadius = CornerRadius(3f * unit)
-    )
+    // Two large paper-white capsules carry the face. They drift together
+    // toward one calm gaze target; their small size/tilt difference keeps the
+    // expression warm without introducing uncanny eyeball-like pupils.
+    val eyeWhite = Color.White.copy(alpha = 0.97f)
+    val drift = Offset(gazeX * 1.35f * unit, gazeY * 1.05f * unit)
+    val leftEye = Offset(center.x - 14f * unit + drift.x, center.y - 5f * unit + drift.y)
+    val rightEye = Offset(center.x + 14f * unit + drift.x, center.y - 5f * unit + drift.y)
+    val leftHeight = (17f * eyeOpen * (1f + 0.08f * curious)).coerceAtLeast(1.6f) * unit
+    val rightHeight = (17f * eyeOpen * (1f - 0.06f * curious)).coerceAtLeast(1.6f) * unit
+
+    fun drawEye(eye: Offset, height: Float, width: Float, angle: Float) {
+        withTransform({ rotate(angle, eye) }) {
+            drawRoundRect(
+                color = eyeWhite,
+                topLeft = Offset(eye.x - width / 2f, eye.y - height / 2f),
+                size = Size(width, height),
+                cornerRadius = CornerRadius(width / 2f, width / 2f)
+            )
+            // The crease becomes the upper/lower lid as the capsule narrows,
+            // making a blink legible without adding a separate character face.
+            if (eyeOpen < 0.86f) {
+                drawLine(
+                    color = ink.copy(alpha = 0.5f),
+                    start = Offset(eye.x - width * 0.34f, eye.y),
+                    end = Offset(eye.x + width * 0.34f, eye.y),
+                    strokeWidth = (1.25f + (0.86f - eyeOpen) * 1.4f) * unit
+                )
+            }
+        }
+    }
+
+    drawEye(leftEye, leftHeight, 12.5f * unit, 21f - 2f * curious)
+    drawEye(rightEye, rightHeight, 12.5f * unit, 21f + 1f * curious)
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawExpression(
