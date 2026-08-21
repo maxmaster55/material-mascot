@@ -1,0 +1,21 @@
+package com.skald.materialmascot
+
+import androidx.compose.ui.graphics.Color
+
+/** The visual language of the companion. */
+enum class MascotStyle { BOOK_WISP, SPARK }
+
+/** Small, non-verbal faces that remain legible at compact sizes. */
+enum class MascotExpression { CURIOUS, HAPPY, SLEEPY }
+
+/**
+ * All state needed to render a mascot. Hosts can keep this next to their own
+ * preferences without making the library depend on a settings framework.
+ */
+data class MascotConfig(
+    val enabled: Boolean = true,
+    val color: Color = Color.Unspecified,
+    val style: MascotStyle = MascotStyle.BOOK_WISP,
+    val expression: MascotExpression = MascotExpression.CURIOUS,
+    val motion: Boolean = true
+)
