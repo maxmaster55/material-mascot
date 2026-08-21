@@ -9,10 +9,14 @@ which controls enablement, color, style, expression, and gentle motion. Hosts
 can turn motion off for reduced-motion preferences or use the static config in
 screens where a companion would be distracting.
 
-Expression changes smoothly morph the eyes and mouth, and motion-enabled
-mascots bob and blink naturally. This makes it easy for an app to react to
-state—for example, curious while waiting, sleepy while thinking, and happy
-after a reply—without managing animation state itself.
+Expression changes smoothly morph the eyes; the library never draws a mouth.
+Available semantic states include CURIOUS, HAPPY, SLEEPY, SAD, ALERT, ERROR,
+FOCUSED, THINKING, EXCITED, SUCCESS, and CONFUSED. Motion adds state-specific
+eye timing, blink pulses, bounded bounce/orbit/shake, and smooth transitions.
+Reduced motion keeps every state deterministic and still. An app can react to
+status directly—for example, THINKING while retrieving, ALERT for attention,
+SUCCESS after a reply, or SAD when no passage was found—without managing
+animation state itself.
 
 This project is independent code and artwork. It does not copy the shapes,
 assets, or animation implementation of any other mascot project.

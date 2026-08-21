@@ -6,7 +6,7 @@ import androidx.compose.ui.graphics.Color
 enum class MascotStyle { BOOK_WISP, SPARK, CIRCLE, SOFT_BLOB, HEXAGON, TRIANGLE }
 
 /** Small, non-verbal faces that remain legible at compact sizes. */
-enum class MascotExpression { CURIOUS, HAPPY, SLEEPY }
+enum class MascotExpression { CURIOUS, HAPPY, SLEEPY, SAD, ALERT, ERROR, FOCUSED, THINKING, EXCITED, SUCCESS, CONFUSED }
 
 /**
  * All state needed to render a mascot. Hosts can keep this next to their own
@@ -17,5 +17,7 @@ data class MascotConfig(
     val color: Color = Color.Unspecified,
     val style: MascotStyle = MascotStyle.BOOK_WISP,
     val expression: MascotExpression = MascotExpression.CURIOUS,
-    val motion: Boolean = true
+    val motion: Boolean = true,
+    /** Motion amplitude/intensity, clamped by the renderer to the supported range. */
+    val motionScale: Float = 1f
 )
