@@ -148,9 +148,120 @@ fun MaterialMascot(
                     drawBookWisp(center, size.minDimension, accent, ink, eyeOpen, curious, happy, sleepy, gazeX, gazeY)
                 MascotStyle.SPARK ->
                     drawSpark(center, size.minDimension, accent, ink, eyeOpen, curious, happy, sleepy, gazeX, gazeY)
+                MascotStyle.CIRCLE ->
+                    drawCircleBody(center, size.minDimension, accent, ink, eyeOpen, curious, happy, sleepy, gazeX, gazeY)
+                MascotStyle.SOFT_BLOB ->
+                    drawSoftBlob(center, size.minDimension, accent, ink, eyeOpen, curious, happy, sleepy, gazeX, gazeY)
+                MascotStyle.HEXAGON ->
+                    drawHexagon(center, size.minDimension, accent, ink, eyeOpen, curious, happy, sleepy, gazeX, gazeY)
+                MascotStyle.TRIANGLE ->
+                    drawTriangle(center, size.minDimension, accent, ink, eyeOpen, curious, happy, sleepy, gazeX, gazeY)
             }
         }
     }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCircleBody(
+    center: Offset,
+    diameter: Float,
+    accent: Color,
+    ink: Color,
+    eyeOpen: Float,
+    curious: Float,
+    happy: Float,
+    sleepy: Float,
+    gazeX: Float,
+    gazeY: Float
+) {
+    val unit = diameter / 100f
+    drawCircle(accent, radius = 33f * unit, center = center)
+    drawCircle(
+        color = accent.copy(alpha = 0.28f),
+        radius = 33f * unit,
+        center = center,
+        style = Stroke(1.4f * unit)
+    )
+    drawEyes(center, unit, ink, eyeOpen, curious, happy, gazeX, gazeY)
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSoftBlob(
+    center: Offset,
+    diameter: Float,
+    accent: Color,
+    ink: Color,
+    eyeOpen: Float,
+    curious: Float,
+    happy: Float,
+    sleepy: Float,
+    gazeX: Float,
+    gazeY: Float
+) {
+    val unit = diameter / 100f
+    val blob = Path().apply {
+        moveTo(center.x, center.y - 33f * unit)
+        cubicTo(center.x + 23f * unit, center.y - 35f * unit, center.x + 36f * unit, center.y - 17f * unit, center.x + 33f * unit, center.y + 5f * unit)
+        cubicTo(center.x + 31f * unit, center.y + 28f * unit, center.x + 13f * unit, center.y + 34f * unit, center.x - 5f * unit, center.y + 31f * unit)
+        cubicTo(center.x - 28f * unit, center.y + 35f * unit, center.x - 38f * unit, center.y + 14f * unit, center.x - 32f * unit, center.y - 7f * unit)
+        cubicTo(center.x - 29f * unit, center.y - 25f * unit, center.x - 14f * unit, center.y - 32f * unit, center.x, center.y - 33f * unit)
+        close()
+    }
+    drawPath(blob, accent)
+    drawEyes(center, unit, ink, eyeOpen, curious, happy, gazeX, gazeY)
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawHexagon(
+    center: Offset,
+    diameter: Float,
+    accent: Color,
+    ink: Color,
+    eyeOpen: Float,
+    curious: Float,
+    happy: Float,
+    sleepy: Float,
+    gazeX: Float,
+    gazeY: Float
+) {
+    val unit = diameter / 100f
+    val body = Path()
+    repeat(6) { index ->
+        val angle = -PI / 2.0 + index * PI / 3.0
+        val point = Offset(
+            center.x + cos(angle).toFloat() * 33f * unit,
+            center.y + sin(angle).toFloat() * 33f * unit
+        )
+        if (index == 0) body.moveTo(point.x, point.y) else body.lineTo(point.x, point.y)
+    }
+    body.close()
+    drawPath(body, accent)
+    drawEyes(center, unit, ink, eyeOpen, curious, happy, gazeX, gazeY)
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTriangle(
+    center: Offset,
+    diameter: Float,
+    accent: Color,
+    ink: Color,
+    eyeOpen: Float,
+    curious: Float,
+    happy: Float,
+    sleepy: Float,
+    gazeX: Float,
+    gazeY: Float
+) {
+    val unit = diameter / 100f
+    val body = Path().apply {
+        moveTo(center.x, center.y - 36f * unit)
+        lineTo(center.x + 36f * unit, center.y + 28f * unit)
+        cubicTo(center.x + 37f * unit, center.y + 31f * unit, center.x + 33f * unit, center.y + 34f * unit, center.x + 29f * unit, center.y + 34f * unit)
+        lineTo(center.x - 29f * unit, center.y + 34f * unit)
+        cubicTo(center.x - 33f * unit, center.y + 34f * unit, center.x - 37f * unit, center.y + 31f * unit, center.x - 36f * unit, center.y + 28f * unit)
+        close()
+    }
+    drawPath(body, accent)
+    // The sloped shoulders narrow near the apex; anchor the eyes lower and
+    // slightly smaller so both large capsules stay inside the triangle.
+    val eyeCenter = center.copy(y = center.y + 13f * unit)
+    drawEyes(eyeCenter, unit * 0.86f, ink, eyeOpen, curious, happy, gazeX, gazeY)
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBookWisp(
@@ -196,8 +307,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBookWisp(
         end = Offset(center.x, center.y + 22f * unit),
         strokeWidth = 1.5f * unit
     )
-    drawEyes(center, unit, ink, eyeOpen, curious, gazeX, gazeY)
-    drawExpression(center, unit, ink, curious, happy, sleepy)
+    drawEyes(center, unit, ink, eyeOpen, curious, happy, gazeX, gazeY)
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSpark(
@@ -220,8 +330,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSpark(
         val end = Offset(center.x + sin(angle.toFloat()) * 41f * unit, center.y - kotlin.math.cos(angle).toFloat() * 41f * unit)
         drawLine(accent.copy(alpha = 0.72f), start, end, strokeWidth = 3f * unit)
     }
-    drawEyes(center, unit, ink, eyeOpen, curious, gazeX, gazeY)
-    drawExpression(center, unit, ink, curious, happy, sleepy)
+    drawEyes(center, unit, ink, eyeOpen, curious, happy, gazeX, gazeY)
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawEyes(
@@ -230,6 +339,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawEyes(
     ink: Color,
     eyeOpen: Float,
     curious: Float,
+    happy: Float,
     gazeX: Float,
     gazeY: Float
 ) {
@@ -240,8 +350,8 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawEyes(
     val drift = Offset(gazeX * 1.35f * unit, gazeY * 1.05f * unit)
     val leftEye = Offset(center.x - 14f * unit + drift.x, center.y - 5f * unit + drift.y)
     val rightEye = Offset(center.x + 14f * unit + drift.x, center.y - 5f * unit + drift.y)
-    val leftHeight = (17f * eyeOpen * (1f + 0.08f * curious)).coerceAtLeast(1.6f) * unit
-    val rightHeight = (17f * eyeOpen * (1f - 0.06f * curious)).coerceAtLeast(1.6f) * unit
+    val leftHeight = (17f * eyeOpen * (1f + 0.08f * curious + 0.04f * happy)).coerceAtLeast(1.6f) * unit
+    val rightHeight = (17f * eyeOpen * (1f - 0.06f * curious + 0.04f * happy)).coerceAtLeast(1.6f) * unit
 
     fun drawEye(eye: Offset, height: Float, width: Float, angle: Float) {
         withTransform({ rotate(angle, eye) }) {
@@ -264,43 +374,6 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawEyes(
         }
     }
 
-    drawEye(leftEye, leftHeight, 12.5f * unit, 21f - 2f * curious)
-    drawEye(rightEye, rightHeight, 12.5f * unit, 21f + 1f * curious)
-}
-
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawExpression(
-    center: Offset,
-    unit: Float,
-    ink: Color,
-    curious: Float,
-    happy: Float,
-    sleepy: Float
-) {
-    if (curious > 0.001f) {
-        drawOval(
-            color = ink.copy(alpha = ink.alpha * curious),
-            topLeft = Offset(center.x - 3.5f * unit, center.y + 3f * unit),
-            size = Size(7f * unit, 8f * unit),
-            style = Stroke((1.8f + 0.4f * curious) * unit)
-        )
-    }
-    if (happy > 0.001f) {
-        drawArc(
-            color = ink.copy(alpha = ink.alpha * happy),
-            startAngle = 15f,
-            sweepAngle = 150f,
-            useCenter = false,
-            topLeft = Offset(center.x - 11f * unit, center.y - 2f * unit),
-            size = Size(22f * unit, 16f * unit),
-            style = Stroke(2f * unit)
-        )
-    }
-    if (sleepy > 0.001f) {
-        drawLine(
-            color = ink.copy(alpha = ink.alpha * sleepy),
-            start = Offset(center.x - 5f * unit, center.y + 8f * unit),
-            end = Offset(center.x + 5f * unit, center.y + 8f * unit),
-            strokeWidth = 2f * unit
-        )
-    }
+    drawEye(leftEye, leftHeight, 12.5f * unit * (1f + 0.05f * happy), 21f - 2f * curious - 1.5f * happy)
+    drawEye(rightEye, rightHeight, 12.5f * unit * (1f + 0.05f * happy), 21f + 1f * curious + 1.5f * happy)
 }

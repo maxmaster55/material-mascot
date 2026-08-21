@@ -3,7 +3,7 @@ package com.skald.materialmascot
 import androidx.compose.ui.graphics.Color
 
 /** The visual language of the companion. */
-enum class MascotStyle { BOOK_WISP, SPARK }
+enum class MascotStyle { BOOK_WISP, SPARK, CIRCLE, SOFT_BLOB, HEXAGON, TRIANGLE }
 
 /** Small, non-verbal faces that remain legible at compact sizes. */
 enum class MascotExpression { CURIOUS, HAPPY, SLEEPY }

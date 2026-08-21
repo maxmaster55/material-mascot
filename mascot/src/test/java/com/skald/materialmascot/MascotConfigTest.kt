@@ -27,4 +27,11 @@ class MascotConfigTest {
         assertEquals(MascotStyle.SPARK, config.style)
         assertEquals(MascotExpression.SLEEPY, config.expression)
     }
+    @Test
+    fun includes_companion_body_shapes() {
+        assertTrue(MascotStyle.CIRCLE in MascotStyle.entries)
+        assertTrue(MascotStyle.SOFT_BLOB in MascotStyle.entries)
+        assertTrue(MascotStyle.HEXAGON in MascotStyle.entries)
+        assertTrue(MascotStyle.TRIANGLE in MascotStyle.entries)
+    }
 }
