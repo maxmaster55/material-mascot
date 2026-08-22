@@ -61,6 +61,21 @@ fun eggProfile(): FloatArray = floatArrayOf(
     0.8760f, 0.8604f, 0.8490f, 0.8394f, 0.8337f, 0.8314f, 0.8305f, 0.8326f
 )
 
+/**
+ * Triangle pointing up with heavily rounded corners (measured off bloub's
+ * "play" state, frame 190, footprint 1.995 x 1.884 ball-radius).
+ */
+fun triangleProfile(): FloatArray = floatArrayOf(
+    0.7819f, 0.8211f, 0.8747f, 0.9440f, 1.0223f, 1.0960f, 1.1401f, 1.1340f,
+    1.0808f, 1.0047f, 0.9265f, 0.8603f, 0.8104f, 0.7730f, 0.7450f, 0.7273f,
+    0.7151f, 0.7118f, 0.7148f, 0.7245f, 0.7427f, 0.7680f, 0.8037f, 0.8518f,
+    0.9148f, 0.9876f, 1.0583f, 1.1073f, 1.1109f, 1.0667f, 0.9940f, 0.9164f,
+    0.8482f, 0.7948f, 0.7555f, 0.7261f, 0.7056f, 0.6925f, 0.6859f, 0.6869f,
+    0.6938f, 0.7084f, 0.7305f, 0.7615f, 0.8040f, 0.8595f, 0.9311f, 1.0092f,
+    1.0791f, 1.1171f, 1.1054f, 1.0501f, 0.9779f, 0.9050f, 0.8450f, 0.7990f,
+    0.7656f, 0.7413f, 0.7258f, 0.7160f, 0.7146f, 0.7204f, 0.7330f, 0.7528f
+)
+
 /** Hexagon pointing up, very rounded corners (measured, footprint 1.826 x 2.011). */
 fun hexagonProfile(): FloatArray = floatArrayOf(
     0.9210f, 0.9282f, 0.9441f, 0.9706f, 0.9984f, 1.0059f, 0.9896f, 0.9562f,

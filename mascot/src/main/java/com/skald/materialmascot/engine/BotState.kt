@@ -2,6 +2,7 @@ package com.maxmaster.materialmascot.engine
 
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.pow
 import kotlin.math.sin
 
 /** A decorative dot: circle, or the teardrop of the "!" glyph when [tear].
@@ -59,6 +60,26 @@ private fun basePose(
  */
 private val EGG_RADII by lazy { eggProfile() }
 private val HEX_RADII by lazy { hexagonProfile() }
+private val TRIANGLE_RADII by lazy { triangleProfile() }
+
+/**
+ * The rounded "play" triangle doesn't spin on its axis: its centre circles
+ * the origin (measured r 0.213), which is what makes it read as tumbling
+ * rather than rotating. We let the rotation sway gently around that orbit.
+ */
+private const val TRI_ORBIT = 0.213f
+
+/** bloub's comet: the ball collapses to this pebble before regrowing. */
+private const val COMET_DOT = 0.129f
+
+/**
+ * Burst sparkles: five spiraling-in particles, one born every 0.2 s.
+ * Deterministic seeds (bloub uses a fixed-seed RNG; evenly spread angles
+ * read the same).
+ */
+private val BURST_SEEDS = Array(5) { i ->
+    Triple(i * 0.2f, 0.58f + (i % 3) * 0.09f, i * (TAU / 5f) + 0.7f)
+}
 
 private const val BAR_UPRIGHT_CY = -0.1875f
 private val BAR_UPRIGHT_RADII =
@@ -92,21 +113,25 @@ fun dotPulse(t: Float, index: Int): Float {
 }
 
 /** Processing pose shared by Thinking and Working.
- *  The body KEEPS its full size: three dots pulse across the middle in the
- *  eye color while the ball does a happy little bounce. */
+ *  The body KEEPS its full size: three dots CHASE each other around an
+ *  invisible ring on the belly — front dots bigger and brighter than back
+ *  dots, so the orbit reads with real depth — while the ball does a happy
+ *  little bounce. Far more alive than pulsing in place. */
 private fun dotsPose(t: Float): Pose {
+    val spin = t * (TAU / 2.4f)
     val dots = (0..2).map { i ->
-        val k = dotPulse(t, i)
+        val a = spin + i * (TAU / 3f)
+        val depth = 0.5f + 0.5f * sin(a)
         DotSpec(
-            x = DOT_X[i] * 0.62f,
-            y = 0.02f,
-            r = DOT_R * 0.72f * (1f + (DOT_PEAK - 1f) * k),
-            alpha = 0.55f + 0.45f * k,
+            x = cos(a) * 0.34f,
+            y = 0.04f + sin(a) * 0.10f,
+            r = DOT_R * (0.55f + 0.38f * depth),
+            alpha = 0.40f + 0.60f * depth,
             onBody = true
         )
     }
     return basePose(
-        sil = circle(1f, cy = sin(t * (TAU / 1.2f)) * 0.006f),
+        sil = circle(1f, cy = sin(t * (TAU / 1.4f)) * 0.014f),
         eyeAlpha = 0f,
         dots = dots
     )
@@ -387,13 +412,98 @@ sealed class BotState(
         }
     )
 
+    // --- bloub's playful shape morphs ---
+
+    object Play : BotState(
+        name = "play",
+        morphSeconds = 0.5f,
+        blinkIn = true,
+        poseFn = { t ->
+            val rot = sin(t * (TAU / 3f)) * 0.35f
+            basePose(
+                sil = Silhouette(
+                    TRIANGLE_RADII,
+                    rot = rot,
+                    cx = -TRI_ORBIT * sin(rot),
+                    cy = TRI_ORBIT * cos(rot)
+                ),
+                gaze = HeadGaze(yaw = 12f, pitch = -8f, roll = -6f),
+                split = 15f,
+                w0 = 0.18f, h0 = 0.34f,
+                w1 = 0.18f, h1 = 0.34f
+            )
+        }
+    )
+
+    /**
+     * Collapse to a pebble while sparkles spiral in and get eaten, then pop
+     * back to the ball. Internally periodic (2.6 s), like bloub's block.
+     */
+    object Burst : BotState(
+        name = "burst",
+        morphSeconds = 0.4f,
+        blinkIn = false,
+        poseFn = { t ->
+            val c = t % 2.6f
+            val collapse = 1f - 0.834f * Easings.easeOutQuint(clamp(c / 0.7f))
+            val regrow = Easings.easeOutQuint(clamp((c - 1.7f) / 0.7f))
+            val dots = BURST_SEEDS.mapNotNull { seed ->
+                val u = c - seed.first
+                if (u <= 0f || u >= 0.62f) return@mapNotNull null
+                val rho = seed.second * 0.75f.pow(u * 10f)
+                val angle = seed.third + u * 100f * PI.toFloat() / 180f
+                DotSpec(
+                    x = cos(angle) * rho,
+                    y = sin(angle) * rho,
+                    r = 0.04f + 0.028f * clamp(u / 0.55f),
+                    alpha = clamp(u / 0.06f) * clamp((0.62f - u) / 0.08f)
+                )
+            }
+            basePose(
+                sil = circle(collapse + (1f - collapse) * regrow),
+                eyeAlpha = clamp((c - 1.85f) / 0.4f),
+                dots = dots
+            )
+        }
+    )
+
+    /** Shrink to a comet dot with a gentle wobble and a tiny orbiting trail. */
+    object Comet : BotState(
+        name = "comet",
+        morphSeconds = 0.45f,
+        blinkIn = false,
+        poseFn = { t ->
+            val c = t % 2.4f
+            val collapse =
+                1f - (1f - COMET_DOT) * Easings.easeOutQuint(clamp(c / 0.55f))
+            val regrow = Easings.easeOutQuint(clamp((c - 1.85f) / 0.6f))
+            val ta = c * (TAU / 1.2f)
+            basePose(
+                sil = circle(
+                    collapse + (1f - collapse) * regrow,
+                    cy = sin(clamp(c / 1.7f) * PI.toFloat()) * 0.035f
+                ),
+                eyeAlpha = clamp((c - 2f) / 0.35f),
+                dots = listOf(
+                    DotSpec(
+                        x = cos(ta) * 0.5f,
+                        y = sin(ta) * 0.13f,
+                        r = 0.05f,
+                        alpha = clamp((c - 0.2f) / 0.3f) * clamp((2.1f - c) / 0.3f)
+                    )
+                )
+            )
+        }
+    )
+
     companion object {
         // Lazy so the registry never builds during the sealed class's own
         // initialization window.
         val all: List<BotState> by lazy {
             listOf(
                 Idle, Listening, Thinking, Responding, Alert, Happy, Confused,
-                Sleepy, Notify, Working, Narrating, Sad, Love, Silly, Egg, Hexagon
+                Sleepy, Notify, Working, Narrating, Sad, Love, Silly, Egg,
+                Hexagon, Play, Burst, Comet
             )
         }
 

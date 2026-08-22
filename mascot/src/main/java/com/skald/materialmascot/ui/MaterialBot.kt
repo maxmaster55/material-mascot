@@ -91,7 +91,8 @@ fun MaterialBot(
         nowMs = frameMs,
         scalePx = sizePx,
         reducedMotion = !config.motion,
-        energy = config.energy
+        energy = config.energy,
+        eyeStyle = config.eyeStyle
     )
 
     val canvasModifier = if (contentDescription != null) {

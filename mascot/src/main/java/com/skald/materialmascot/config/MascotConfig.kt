@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.maxmaster.materialmascot.engine.BotState
+import com.maxmaster.materialmascot.engine.EyeStyle
 
 /**
  * Host-owned immutable configuration for the Material Bot mascot.
@@ -33,5 +34,6 @@ data class MascotConfig(
     val eyeColor: Color = Color.White,
     val size: Dp = 64.dp,
     val motion: Boolean = true,
-    val energy: Float = 1.9f
+    val energy: Float = 1.9f,
+    val eyeStyle: EyeStyle = EyeStyle.CLASSIC
 )

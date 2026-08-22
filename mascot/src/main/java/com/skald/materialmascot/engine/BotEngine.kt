@@ -72,7 +72,8 @@ class BotEngine(
         nowMs: Long,
         scalePx: Float,
         reducedMotion: Boolean = false,
-        energy: Float = 1f
+        energy: Float = 1f,
+        eyeStyle: EyeStyle = EyeStyle.CLASSIC
     ): BotFrame {
         val now = nowMs / 1000.0
         // All geometry is authored in ball-radius units; this maps unit -> px.
@@ -149,14 +150,17 @@ class BotEngine(
                 // The blink applies AFTER all that: a vertical screen-space
                 // squash, not along the capsule axis.
                 val k = blinkScale(minOf(lid, cfg.open))
+                // The eye style reshapes the pose's own dimensions, keeping
+                // each expression's relative character (squints stay squints).
+                val (styledW, styledH) = eyeStyle.apply(cfg.w, cfg.h)
                 eyes.add(
                     RenderedEye(
                         tx = e.x * fit + offX * r,
                         ty = e.y * fit + offY * r,
                         a = ax, b = ay, c = cx2, d = cy2,
                         blinkK = k,
-                        wPx = cfg.w * r,
-                        hPx = cfg.h * r,
+                        wPx = styledW * r,
+                        hPx = styledH * r,
                         alpha = pose.eyeAlpha * clamp(e.depth / 0.12f)
                     )
                 )
