@@ -1,48 +1,81 @@
 # Material Mascot
 
-Material Mascot is a small, original Android Compose library for a friendly
-book-wisp companion. It draws its character with Compose Canvas and Material 3
-colors, so it has no image assets and naturally follows a host app theme.
+A faithful Kotlin / Jetpack Compose Canvas port of **bloub**, the MIT-licensed
+SVG recreation of the x.ai Grok avatar. Everything is drawn at runtime — no
+image assets — as one filled silhouette with two capsule eyes, morphing between
+poses with measured, frame-by-frame-fitted geometry.
 
-The API is intentionally compact: `MaterialMascot` accepts `MascotConfig`,
-which controls enablement, color, style, expression, and gentle motion. Hosts
-can turn motion off for reduced-motion preferences or use the static config in
-screens where a companion would be distracting.
+## How it works
 
-Expression changes smoothly morph the eyes; the library never draws a mouth.
-Available semantic states include CURIOUS, HAPPY, SLEEPY, SAD, ALERT, ERROR,
-FOCUSED, THINKING, EXCITED, SUCCESS, and CONFUSED. Motion adds state-specific
-eye timing, blink pulses, bounded bounce/orbit/shake, and smooth transitions.
-Reduced motion keeps every state deterministic and still. An app can react to
-status directly—for example, THINKING while retrieving, ALERT for attention,
-SUCCESS after a reply, or SAD when no passage was found—without managing
-animation state itself.
+- **Single filled silhouette.** Every body shape is a radial profile r(theta)
+  sampled at 64 fixed angles; any two shapes share points one-to-one, so a
+  morph is just a linear interpolation of radii (plus shortest-path rotation).
+- **Capsule eyes painted on a sphere.** Each eye sits on the tangent plane of
+  an invisible head sphere, projected orthographically; edge compression and
+  tilt fall out of the math. Resting gaze `REST_GAZE` = yaw 28.49°,
+  pitch 28.62°, roll −13°, half-separation `EYE_SPLIT` = 15.46°, eye size
+  `EYE_W` = 0.186 / `EYE_H` = 0.412 (ball-radius units).
+- **Transitions** are exponential-style ease-outs (`easeOutQuint`,
+  `easeInOutCubic`): fast settle, **no body overshoot**. The only springy
+  effect is local to its state (Notify badge pop, eye opening).
+- **Life at rest** is pure function of time: slow gaze drift plus a
+  pre-computed deterministic blink schedule — first blink at 1.4 s, then blinks
+  every 1.9–4.6 s, double-blink 18% of the time. Pause/resume/jump always give
+  the identical image.
+- **Notify badge** in bloub blue `#2496E8`, pop peak +14% around 0.3 s.
 
-This project is independent code and artwork. It does not copy the shapes,
-assets, or animation implementation of any other mascot project.
+## States
+
+The ten `BotState` objects map to bloub poses:
+
+| BotState     | bloub pose                                  |
+|--------------|---------------------------------------------|
+| `Idle`       | idle ball                                    |
+| `Listening`  | wide surprised eyes                          |
+| `Thinking`   | three pulsing dots, no face                  |
+| `Working`    | three pulsing dots, no face                  |
+| `Responding` | lively ball, slightly raised gaze            |
+| `Alert`      | tilted "!" glyph with travel + buzz          |
+| `Happy`      | wink                                         |
+| `Confused`   | mismatched mirrored-tilt eyes                |
+| `Sleepy`     | tiny bouncing ball                           |
+| `Notify`     | round wide eyes + notification badge         |
+
+## Reduced motion
+
+`MascotConfig(motion = false)` kills gaze wander, positional drift and
+breathing and snaps transitions; blinking stays. The character remains alive
+without movement, per accessibility guidelines.
 
 ## Usage
 
-Include the `mascot` Android library module, then render it from Compose:
-
 ```kotlin
-MaterialMascot(
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import com.maxmaster.materialmascot.config.MascotConfig
+import com.maxmaster.materialmascot.engine.BotState
+import com.maxmaster.materialmascot.ui.MaterialBot
+
+MaterialBot(
     config = MascotConfig(
-        style = MascotStyle.BOOK_WISP,
-        expression = MascotExpression.HAPPY,
-        color = MaterialTheme.colorScheme.primary,
-        motion = true,
-    ),
+        state = BotState.Thinking,
+        color = Color(0xFF0A0A0C),
+        size = 64.dp
+    )
 )
 ```
 
-All configuration is immutable and host-owned, so it can be backed by
-DataStore, an in-memory chat state, or any other settings system.
+Defaults: `enabled = true`, `state`/`initialState = BotState.Idle`,
+body color = ink `Color(0xFF0A0A0C)` (bloub 'encre'), eyes =
+`Color.White`, `size = 64.dp`, `motion = true`. All fields are immutable so
+the config can be backed by DataStore or ViewModel state.
 
-## Local development
+In skald, chat status maps onto states: SUCCESS -> Happy, ERROR -> Alert,
+SLOW -> Sleepy, WORKING -> Working, generating -> Thinking.
+
+## Development
 
 ```sh
 ./gradlew :mascot:testDebugUnitTest :mascot:assembleDebug
 ```
-
-The `preview` package contains a Material 3 `@Preview` for quick visual review.

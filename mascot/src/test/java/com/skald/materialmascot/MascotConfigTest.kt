@@ -1,82 +1,65 @@
-package com.skald.materialmascot
+package com.maxmaster.materialmascot
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import com.maxmaster.materialmascot.config.MascotConfig
+import com.maxmaster.materialmascot.engine.BotState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MascotConfigTest {
     @Test
-    fun defaults_are_enabled_and_motion_safe() {
+    fun defaults_are_enabled_and_idle() {
         val config = MascotConfig()
         assertTrue(config.enabled)
         assertTrue(config.motion)
-        assertEquals(MascotStyle.BOOK_WISP, config.style)
-        assertEquals(MascotExpression.CURIOUS, config.expression)
-        assertEquals(1f, config.motionScale)
+        assertEquals(BotState.Idle, config.state)
+        assertEquals(BotState.Idle, config.initialState)
+        assertEquals(64.dp, config.size)
+        assertEquals(Color(0xFF0A0A0C), config.color)
+        assertEquals(Color.White, config.eyeColor)
     }
 
     @Test
-    fun static_customization_is_retained() {
+    fun custom_values_are_retained() {
         val config = MascotConfig(
             enabled = false,
             motion = false,
-            style = MascotStyle.SPARK,
-            expression = MascotExpression.SLEEPY
+            state = BotState.Happy,
+            initialState = BotState.Thinking,
+            color = Color(0xFF2F8F83),
+            size = 96.dp
         )
         assertEquals(false, config.enabled)
         assertEquals(false, config.motion)
-        assertEquals(MascotStyle.SPARK, config.style)
-        assertEquals(MascotExpression.SLEEPY, config.expression)
-    }
-    @Test
-    fun includes_companion_body_shapes() {
-        assertTrue(MascotStyle.CIRCLE in MascotStyle.entries)
-        assertTrue(MascotStyle.SOFT_BLOB in MascotStyle.entries)
-        assertTrue(MascotStyle.HEXAGON in MascotStyle.entries)
-        assertTrue(MascotStyle.TRIANGLE in MascotStyle.entries)
-    }
-    @Test
-    fun includes_semantic_eye_expressions() {
-        assertTrue(MascotExpression.SAD in MascotExpression.entries)
-        assertTrue(MascotExpression.ALERT in MascotExpression.entries)
-        assertTrue(MascotExpression.ERROR in MascotExpression.entries)
-        assertTrue(MascotExpression.FOCUSED in MascotExpression.entries)
-        assertTrue(MascotExpression.THINKING in MascotExpression.entries)
-        assertTrue(MascotExpression.EXCITED in MascotExpression.entries)
-        assertTrue(MascotExpression.SUCCESS in MascotExpression.entries)
-        assertTrue(MascotExpression.CONFUSED in MascotExpression.entries)
-    }
-    @Test
-    fun motion_scale_is_host_configurable() {
-        val config = MascotConfig(motionScale = 1.8f)
-        assertEquals(1.8f, config.motionScale)
+        assertEquals(BotState.Happy, config.state)
+        assertEquals(BotState.Thinking, config.initialState)
+        assertEquals(Color(0xFF2F8F83), config.color)
+        assertEquals(96.dp, config.size)
     }
 
     @Test
-    fun all_shapes_and_expressions_accept_supported_motion_scales() {
-        val scales = listOf(0f, 0.65f, 1f, 1.6f, 2f)
-
-        MascotStyle.entries.forEach { style ->
-            MascotExpression.entries.forEach { expression ->
-                scales.forEach { scale ->
-                    val config = MascotConfig(
-                        style = style,
-                        expression = expression,
-                        motionScale = scale
-                    )
-                    assertEquals(style, config.style)
-                    assertEquals(expression, config.expression)
-                    assertEquals(scale, normalizedMotionScale(config.motionScale))
-                }
-            }
-        }
+    fun all_states_are_registered() {
+        val expected = listOf(
+            BotState.Idle, BotState.Listening, BotState.Thinking, BotState.Responding,
+            BotState.Alert, BotState.Happy, BotState.Confused, BotState.Sleepy,
+            BotState.Notify, BotState.Working, BotState.Narrating, BotState.Sad,
+            BotState.Love, BotState.Silly, BotState.Egg, BotState.Hexagon
+        )
+        assertEquals(expected, BotState.all)
     }
 
     @Test
-    fun non_finite_motion_scale_is_safe() {
-        assertEquals(1f, normalizedMotionScale(Float.NaN))
-        assertEquals(0f, normalizedMotionScale(Float.NEGATIVE_INFINITY))
-        assertEquals(2f, normalizedMotionScale(Float.POSITIVE_INFINITY))
-        assertTrue(normalizedMotionScale(Float.NaN).isFinite())
+    fun from_name_parses_case_insensitively() {
+        assertEquals(BotState.Happy, BotState.fromName("HAPPY"))
+        assertEquals(BotState.Thinking, BotState.fromName("thinking"))
+        assertEquals(BotState.Responding, BotState.fromName("Responding"))
+    }
+
+    @Test
+    fun unknown_name_falls_back_to_idle() {
+        assertEquals(BotState.Idle, BotState.fromName("nope"))
+        assertEquals(BotState.Idle, BotState.fromName(""))
     }
 }
