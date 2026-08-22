@@ -1,20 +1,18 @@
-# Material Mascot consumer ProGuard/R8 rules
-# The public API is referenced directly by Compose call sites; keep all public classes.
+# Material Mascot — consumer ProGuard/R8 rules.
+#
+# The library is pure Jetpack Compose + Canvas: nothing is reached via
+# reflection or JNI, so R8 may shrink, optimize and obfuscate everything a
+# consuming app does not reference. The rule below only pins the library's
+# public API surface so it survives aggressive consumer configs: crash
+# reports keep readable names and Java interop callers never see stripped
+# members.
+#
+# Deliberately NO -keep rules for androidx.compose.**, androidx.lifecycle.**
+# or kotlinx.coroutines.**: those artifacts ship their own consumer rules,
+# and duplicating them here would disable shrinking of the whole Compose
+# runtime in every app depending on this library.
 
--keep public class com.maxmaster.materialmascot.** { *; }
--keep public enum com.maxmaster.materialmascot.** { *; }
--keep public interface com.maxmaster.materialmascot.** { *; }
--keep public @interface com.maxmaster.materialmascot.** { *; }
-
-# Keep Kotlin metadata for public APIs
--keep class kotlin.Metadata { *; }
-
-# Compose compiler needs these
--keep class androidx.compose.runtime.** { *; }
--keep class androidx.compose.ui.** { *; }
-
-# Lifecycle (used by LiveBot internally)
--keep class androidx.lifecycle.** { *; }
-
-# Coroutines (used by MascotStatusBus internally)
--keep class kotlinx.coroutines.** { *; }
+-keep public class com.maxmaster.materialmascot.** {
+    public <init>(...);
+    public *;
+}
