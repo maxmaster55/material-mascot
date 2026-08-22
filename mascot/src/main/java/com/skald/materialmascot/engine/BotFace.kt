@@ -281,6 +281,73 @@ fun squintLid(t: Float): Float {
     return 1f
 }
 
+/**
+ * Micro-fidget deck: rare full-body asides (a yawn, a wander, a sneeze)
+ * layered on top of gaze drift so long idle stretches never metronome.
+ * Pre-drawn schedule, deterministic like [BLINKS]; kinds cycle in order.
+ */
+private enum class FidgetKind { YAWN, WANDER, SNEEZE }
+
+private const val YAWN_DUR = 0.9f
+private const val WANDER_DUR = 1.4f
+private const val SNEEZE_DUR = 0.5f
+
+private data class Fidget(
+    val start: Float,
+    val kind: FidgetKind,
+    /** Wander direction, alternating so excursions go both ways. */
+    val dir: Float
+)
+
+private val FIDGETS: List<Fidget> = run {
+    val rng = Mulberry32(0xF1D9E7)
+    val out = ArrayList<Fidget>()
+    var t = 20f + rng() * 70f
+    while (t < 3600f) {
+        out.add(Fidget(t, FidgetKind.entries[out.size % FidgetKind.entries.size],
+            if (out.size % 2 == 0) 1f else -1f))
+        // one fidget every 20 to 90 s
+        t += 20f + rng() * 70f
+    }
+    out
+}
+
+/**
+ * The active micro-fidget at [ts]: (yawAdd, pitchAdd) degrees plus a lid
+ * MULTIPLIER in [0.35, 1]. Zero/neutral between events.
+ */
+fun fidget(ts: Float): Triple<Float, Float, Float> {
+    var current: Fidget? = null
+    for (f in FIDGETS) {
+        if (f.start > ts) break
+        current = f
+    }
+    val f = current ?: return Triple(0f, 0f, 1f)
+    val u = ts - f.start
+    return when (f.kind) {
+        FidgetKind.YAWN ->
+            if (u >= YAWN_DUR) Triple(0f, 0f, 1f)
+            // Slow full-lid dip and recovery: sleepy comfort, not a blink.
+            else Triple(
+                0f,
+                0f,
+                1f - 0.65f * kotlin.math.sin(u / YAWN_DUR * Math.PI.toFloat())
+            )
+        FidgetKind.WANDER ->
+            if (u >= WANDER_DUR) Triple(0f, 0f, 1f)
+            // Something off-screen caught its eye: one wide yaw excursion.
+            else Triple(
+                25f * kotlin.math.sin(u / WANDER_DUR * Math.PI.toFloat()) * f.dir,
+                0f,
+                1f
+            )
+        FidgetKind.SNEEZE ->
+            if (u >= SNEEZE_DUR) Triple(0f, 0f, 1f)
+            // Pitch nose-dive with a rebound.
+            else Triple(0f, -18f * kotlin.math.sin(u / SNEEZE_DUR * Math.PI.toFloat()), 1f)
+    }
+}
+
 fun liveliness(
     t: Float,
     wander: Float = 1f,
@@ -299,13 +366,14 @@ fun liveliness(
     val ts = t * e
     val (sacYaw, sacPitch) = saccadeOffset(ts)
     val (glanceYaw, glancePitch) = glanceOffset(ts)
+    val (fidgetYaw, fidgetPitch, fidgetLid) = fidget(ts)
     return Liveliness(
         dYaw = (loopNoise(t, 11.3f / e, 0.4f) * 5.5f + loopNoise(t, 3.7f / e, 2.1f) * 1.6f) *
-            wander * e + (sacYaw + glanceYaw) * wander * amp,
+            wander * e + (sacYaw + glanceYaw + fidgetYaw) * wander * amp,
         dPitch = (loopNoise(t, 9.1f / e, 1.3f) * 4.2f + loopNoise(t, 4.3f / e, 0.7f) * 1.3f) *
-            wander * e + (sacPitch + glancePitch) * wander * amp,
+            wander * e + (sacPitch + glancePitch + fidgetPitch) * wander * amp,
         dRoll = loopNoise(t, 13.7f / e, 3.2f) * 2.2f * wander * e,
-        lid = if (blink) minOf(blinkLid(ts), squintLid(ts)) else 1f,
+        lid = if (blink) minOf(blinkLid(ts), squintLid(ts), fidgetLid) else 1f,
         // At rest the video is nearly motionless (center stable +-0.003):
         // all the life goes through gaze and blinking.
         driftX = if (float) loopNoise(t, 7.9f / e, 1.9f) * (0.006f * e) else 0f,

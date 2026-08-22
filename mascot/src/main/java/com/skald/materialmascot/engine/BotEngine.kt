@@ -172,6 +172,10 @@ class BotEngine(
             .filter { it.alpha > 0.01f && it.r > 0.0005f }
             .map { it.copy(x = (it.x + offX) * r, y = (it.y + offY) * r, r = it.r * r) }
 
+        val arcs = pose.arcs
+            .filter { it.alpha > 0.01f }
+            .map { it.copy(x = (it.x + offX) * r, y = (it.y + offY) * r) }
+
         val notif = pose.notif?.let {
             val nFit = radiusAtAngle(pose.sil.radii, atan2(it.y, it.x) - pose.sil.rot)
             NotifBadge(x = (it.x * nFit + offX) * r, y = (it.y * nFit + offY) * r, rPx = it.r * r)
@@ -181,6 +185,7 @@ class BotEngine(
             bodyPoints = bodyPoints,
             eyes = eyes,
             dots = dots,
+            arcs = arcs,
             notif = notif,
             state = cur
         )
@@ -192,6 +197,7 @@ data class BotFrame(
     val bodyPoints: List<Offset>,
     val eyes: List<RenderedEye>,
     val dots: List<DotSpec>,
+    val arcs: List<ArcSpec> = emptyList(),
     val notif: NotifBadge?,
     val state: BotState
 )
@@ -223,6 +229,10 @@ private fun blendPose(a: Pose, b: Pose, t: Float): Pose {
         addAll(a.dots.map { it.copy(alpha = it.alpha * out) })
         addAll(b.dots.map { it.copy(alpha = it.alpha * t) })
     }
+    val arcs = buildList {
+        addAll(a.arcs.map { it.copy(alpha = it.alpha * out) })
+        addAll(b.arcs.map { it.copy(alpha = it.alpha * t) })
+    }
     return Pose(
         sil = blend(a.sil, b.sil, t),
         gaze = HeadGaze(
@@ -235,6 +245,7 @@ private fun blendPose(a: Pose, b: Pose, t: Float): Pose {
         eye1 = lerpEye(a.eye1, b.eye1, t),
         eyeAlpha = lerp(a.eyeAlpha, b.eyeAlpha, t),
         dots = dots,
+        arcs = arcs,
         notif = if (t < 0.5f) a.notif else b.notif
     )
 }

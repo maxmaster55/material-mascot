@@ -12,21 +12,39 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 
 /**
- * Single source of truth for "is a screen currently showing its own big
- * companion". Backed by snapshot state so every reader (floating hosts,
- * scaffolds) recomposes the exact frame the claim changes — no stale pills,
- * no late hide/show.
+ * Single source of truth for "is a screen currently showing its own
+ * companion". Each visible owner gets a [Claim], so overlapping Compose
+ * transitions cannot let one departing owner clear another owner's claim.
+ * Backed by snapshot state so every reader (floating hosts, scaffolds)
+ * recomposes the exact frame the final claim changes.
  */
 object BotStage {
+    /** Opaque ownership token returned by [enter]. */
+    class Claim internal constructor()
+
+    private val activeClaims = mutableSetOf<Claim>()
+
     var bigCompanionOnStage: Boolean by mutableStateOf(false)
         private set
 
-    fun enter() {
+    /** Claims the stage until this exact token is passed to [exit]. */
+    @Synchronized
+    fun enter(): Claim {
+        val claim = Claim()
+        activeClaims += claim
         bigCompanionOnStage = true
+        return claim
     }
 
-    fun exit() {
-        bigCompanionOnStage = false
+    /**
+     * Releases [claim]. Releasing an already-released token is harmless and
+     * never affects another owner that is still on stage.
+     */
+    @Synchronized
+    fun exit(claim: Claim) {
+        if (activeClaims.remove(claim)) {
+            bigCompanionOnStage = activeClaims.isNotEmpty()
+        }
     }
 }
 

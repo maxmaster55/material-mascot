@@ -70,7 +70,10 @@ class BotEngineTest {
 
     @Test
     fun botstate_registry_and_lookup_guards() {
-        assertEquals(16, BotState.all.size)
+        assertEquals(19, BotState.all.size)
+        BotState.all.forEach { state ->
+            assertEquals(state, BotState.fromName(state.name.uppercase()))
+        }
         assertEquals(BotState.Happy, BotState.fromName("HAPPY"))
         assertEquals(BotState.Idle, BotState.fromName("nope"))
     }

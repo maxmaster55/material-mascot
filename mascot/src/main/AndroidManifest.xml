@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Minimal manifest required by Android Studio's layoutlib/Compose preview. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

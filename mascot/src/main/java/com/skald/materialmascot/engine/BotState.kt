@@ -32,6 +32,7 @@ class Pose(
     val eye1: EyeCfg = EyeCfg(Face.EYE_W, Face.EYE_H),
     val eyeAlpha: Float = 1f,
     val dots: List<DotSpec> = emptyList(),
+    val arcs: List<ArcSpec> = emptyList(),
     val notif: NotifSpec? = null
 )
 
@@ -43,12 +44,13 @@ private fun basePose(
     w1: Float = Face.EYE_W, h1: Float = Face.EYE_H, t1: Float = 0f,
     eyeAlpha: Float = 1f,
     dots: List<DotSpec> = emptyList(),
+    arcs: List<ArcSpec> = emptyList(),
     notif: NotifSpec? = null
 ) = Pose(
     sil = sil, gaze = gaze, split = split,
     eye0 = EyeCfg(w0, h0, tilt = t0),
     eye1 = EyeCfg(w1, h1, tilt = t1),
-    eyeAlpha = eyeAlpha, dots = dots, notif = notif
+    eyeAlpha = eyeAlpha, dots = dots, arcs = arcs, notif = notif
 )
 
 /* ------------------------------------------------- non-radial body shapes */
@@ -159,6 +161,13 @@ sealed class BotState(
     val name: String,
     /** duration of the entry morph, seconds */
     val morphSeconds: Float,
+    /**
+     * Period of the periodic part of [poseFn], in pose-clock ms — the TAU
+     * denominator of the silhouette bob / dot orbit / collapse cycle. Hosts
+     * that tile the animation (widget loop frames) sweep exactly this period
+     * so their wrap stays seamless when poses change. 0 = static geometry.
+     */
+    val posePeriodMs: Long = 0L,
     /** true = the entry is masked by a blink, as in the reference video */
     val blinkIn: Boolean,
     /** local state time (seconds) -> pose */
@@ -169,6 +178,7 @@ sealed class BotState(
     object Idle : BotState(
         name = "idle",
         morphSeconds = 0.32f,
+        posePeriodMs = 1700L,
         blinkIn = false,
         poseFn = { t ->
             // Always a little alive: gentle happy bob on top of the rest life.
@@ -200,6 +210,7 @@ sealed class BotState(
     object Thinking : BotState(
         name = "thinking",
         morphSeconds = 0.28f,
+        posePeriodMs = 2400L,
         blinkIn = true,
         poseFn = ::dotsPose
     )
@@ -207,6 +218,7 @@ sealed class BotState(
     object Responding : BotState(
         name = "responding",
         morphSeconds = 0.32f,
+        posePeriodMs = 800L,
         blinkIn = false,
         poseFn = { t ->
             // Cheerful micro-bounce while streaming a reply.
@@ -224,6 +236,7 @@ sealed class BotState(
     object Alert : BotState(
         name = "alert",
         morphSeconds = 0.32f,
+        posePeriodMs = 400L,
         blinkIn = false,
         poseFn = { t ->
             // Alarmed, not transformed: the ball stays full size, stretches a
@@ -235,6 +248,21 @@ sealed class BotState(
                 split = 19f,
                 w0 = 0.30f, h0 = 0.30f,
                 w1 = 0.30f, h1 = 0.30f
+            )
+        }
+    )
+
+    object Exclaim : BotState(
+        name = "exclaim",
+        morphSeconds = 0.45f,
+        blinkIn = false,
+        poseFn = { _ ->
+            // The upright "!": the tapered bar glyph with its dot below,
+            // no face. Static geometry.
+            basePose(
+                sil = Silhouette(BAR_UPRIGHT_RADII),
+                eyeAlpha = 0f,
+                dots = listOf(DotSpec(x = -0.012f, y = 0.526f, r = 0.113f))
             )
         }
     )
@@ -273,17 +301,28 @@ sealed class BotState(
 
     object Sleepy : BotState(
         name = "sleepy",
-        morphSeconds = 0.35f,
+        // Reads unmistakably as sleepy: a softly breathing ball with droopy
+        // closed-eye dashes, plus one dream bubble that drifts up beside it
+        // and pops every 2.8 s breath - the 'zzz' without glyphs.
+        morphSeconds = 0.5f,
+        posePeriodMs = 2800L,
         blinkIn = false,
         poseFn = { t ->
-            // Full-size body, slightly squashed and breathing slowly; the
-            // eyes are two droopy closed dashes tilted away from each other.
-            val breathe = sin(t * (TAU / 2.8f)) * 0.01f
+            val breathe = sin(t * (TAU / 2.8f))
+            val p = (t % 2.8f) / 2.8f
             basePose(
-                sil = circle(1f, sy = 0.95f + breathe),
+                sil = circle(0.97f, sy = 0.95f + 0.02f * breathe),
                 gaze = HeadGaze(yaw = 0f, pitch = -6f, roll = -13f),
                 w0 = 0.447f, h0 = 0.089f, t0 = -8f,
-                w1 = 0.447f, h1 = 0.089f, t1 = 8f
+                w1 = 0.447f, h1 = 0.089f, t1 = 8f,
+                dots = listOf(
+                    DotSpec(
+                        x = 0.55f + 0.06f * p,
+                        y = -0.95f - 0.45f * p,
+                        r = 0.055f + 0.03f * p,
+                        alpha = clamp(p * 6f) * (1f - p)
+                    )
+                )
             )
         }
     )
@@ -312,6 +351,7 @@ sealed class BotState(
     object Working : BotState(
         name = "working",
         morphSeconds = 0.28f,
+        posePeriodMs = 2400L,
         blinkIn = true,
         poseFn = ::dotsPose
     )
@@ -319,6 +359,7 @@ sealed class BotState(
     object Narrating : BotState(
         name = "narrating",
         morphSeconds = 0.32f,
+        posePeriodMs = 1100L,
         blinkIn = true,
         poseFn = { t ->
             // The companion reads aloud: eyes lowered toward the book, a soft
@@ -335,6 +376,7 @@ sealed class BotState(
     object Sad : BotState(
         name = "sad",
         morphSeconds = 0.35f,
+        posePeriodMs = 3200L,
         blinkIn = false,
         poseFn = { t ->
             // Mirrored droopy tilts are exactly what per-eye tilt enables.
@@ -352,6 +394,7 @@ sealed class BotState(
     object Love : BotState(
         name = "love",
         morphSeconds = 0.28f,
+        posePeriodMs = 1400L,
         blinkIn = false,
         poseFn = { t ->
             // Round shining eyes and a giddy sway.
@@ -417,6 +460,7 @@ sealed class BotState(
     object Play : BotState(
         name = "play",
         morphSeconds = 0.5f,
+        posePeriodMs = 3000L,
         blinkIn = true,
         poseFn = { t ->
             val rot = sin(t * (TAU / 3f)) * 0.35f
@@ -442,6 +486,7 @@ sealed class BotState(
     object Burst : BotState(
         name = "burst",
         morphSeconds = 0.4f,
+        posePeriodMs = 2600L,
         blinkIn = false,
         poseFn = { t ->
             val c = t % 2.6f
@@ -471,6 +516,7 @@ sealed class BotState(
     object Comet : BotState(
         name = "comet",
         morphSeconds = 0.45f,
+        posePeriodMs = 2400L,
         blinkIn = false,
         poseFn = { t ->
             val c = t % 2.4f
@@ -496,6 +542,62 @@ sealed class BotState(
         }
     )
 
+    /**
+     * Triangle lets go: one fast tumble out while concentric rings bloom,
+     * then a long settle back into the resting ball. Internally periodic
+     * (3.4 s), like bloub's block.
+     */
+    object Orbit : BotState(
+        name = "orbit",
+        morphSeconds = 0.6f,
+        posePeriodMs = 3400L,
+        blinkIn = false,
+        poseFn = { t ->
+            val rot = -TAU * 1.25f * t * Easings.easeInOutCubic(clamp(t / 0.35f))
+            val back = Easings.easeInOutCubic(clamp((t - 1.6f) / 0.9f))
+            val tri = Silhouette(
+                TRIANGLE_RADII,
+                rot = rot,
+                cx = -TRI_ORBIT * sin(rot),
+                cy = TRI_ORBIT * cos(rot)
+            )
+            val rings = ORBIT_RINGS.mapIndexed { i, ring ->
+                ring.copy(
+                    alpha = clamp(t / 0.8f) * clamp((3.6f - t) / 0.9f) *
+                        clamp((t - i * 0.13f) / 0.3f)
+                )
+            }
+            basePose(
+                sil = blend(tri, circle(1f, rot = rot), back),
+                gaze = HeadGaze(
+                    yaw = sin(t * 6.5f) * 65f * (1f - back),
+                    pitch = -4f + 32f * back,
+                    roll = -13f
+                ),
+                w0 = 0.18f, h0 = 0.34f + 0.07f * back,
+                w1 = 0.18f, h1 = 0.34f + 0.07f * back,
+                arcs = rings
+            )
+        }
+    )
+
+    /** Same ring vocabulary as [Orbit], compressed to a one-second flourish. */
+    object Swirl : BotState(
+        name = "swirl",
+        morphSeconds = 0.35f,
+        posePeriodMs = 1000L,
+        blinkIn = false,
+        poseFn = { t ->
+            val rings = ORBIT_RINGS.take(2).mapIndexed { i, ring ->
+                ring.copy(
+                    alpha = clamp(t / 0.8f) * clamp((1f - t) / 0.9f) *
+                        clamp((t - i * 0.13f) / 0.3f)
+                )
+            }
+            basePose(arcs = rings)
+        }
+    )
+
     companion object {
         // Lazy so the registry never builds during the sealed class's own
         // initialization window.
@@ -503,7 +605,7 @@ sealed class BotState(
             listOf(
                 Idle, Listening, Thinking, Responding, Alert, Happy, Confused,
                 Sleepy, Notify, Working, Narrating, Sad, Love, Silly, Egg,
-                Hexagon, Play, Burst, Comet
+                Hexagon, Play, Burst, Comet, Exclaim, Orbit, Swirl
             )
         }
 

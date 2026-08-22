@@ -87,14 +87,6 @@ fun MaterialBot(
         }
     }
 
-    val frame = engine.sample(
-        nowMs = frameMs,
-        scalePx = sizePx,
-        reducedMotion = !config.motion,
-        energy = config.energy,
-        eyeStyle = config.eyeStyle
-    )
-
     val canvasModifier = if (contentDescription != null) {
         modifier
             .size(config.size)
@@ -115,6 +107,17 @@ fun MaterialBot(
             detectTapGestures { pokes++ }
         }
     ) {
+        // Sample in the draw phase: the ticker state is read here, so a new
+        // frame invalidates only this canvas' draw — not recomposition.
+        // Sampling during composition made every visible bot rebuild its
+        // whole composable at display refresh rate.
+        val frame = engine.sample(
+            nowMs = frameMs,
+            scalePx = sizePx,
+            reducedMotion = !config.motion,
+            energy = config.energy,
+            eyeStyle = config.eyeStyle
+        )
         translate(this.center.x, this.center.y) {
             drawBody(frame.bodyPoints, config.color, bodyPath)
             frame.dots.forEach { drawDot(it, config.color, config.eyeColor, sizePx, bodyPath) }

@@ -30,6 +30,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlinx.coroutines.isActive
 
 /**
@@ -70,11 +71,17 @@ class ShakeDizzyController(
     /**
      * Accelerometer callback. A spike above [SHAKE_G_FORCE] counts as a shake;
      * events closer than [MIN_SHAKE_GAP_MS] are bounce, not intent.
+     *
+     * Detection uses the magnitude of total acceleration minus gravity, which
+     * is orientation-INVARIANT: at rest the phone reads ~1 g whether upright,
+     * sideways or face-down, so rotating or laying it down never trips the
+     * trigger — only genuine linear jolts do.
      */
     override fun onSensorChanged(event: SensorEvent) {
         if (event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
         val (x, y, z) = event.values
-        val force = abs(x + y + z - SensorManager.GRAVITY_EARTH)
+        val magnitude = sqrt(x * x + y * y + z * z)
+        val force = abs(magnitude - SensorManager.GRAVITY_EARTH)
         val now = System.currentTimeMillis()
         if (force < SHAKE_G_FORCE || now - lastShakeAt < MIN_SHAKE_GAP_MS) return
         lastShakeAt = now

@@ -33,6 +33,9 @@ dependencies {
     implementation("androidx.compose.ui:ui:1.9.3")
     implementation("androidx.compose.ui:ui-graphics:1.9.3")
     implementation("androidx.compose.ui:ui-tooling-preview:1.9.3")
+    // ComposeViewAdapter is the runtime Android Studio uses to render @Preview.
+    // Keep it out of the published release AAR while making debug previews work.
+    debugImplementation("androidx.compose.ui:ui-tooling:1.9.3")
     implementation("androidx.compose.material3:material3:1.5.0-alpha06")
     // live package: shake sensor lifecycle + status bus + state collection
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.1")
