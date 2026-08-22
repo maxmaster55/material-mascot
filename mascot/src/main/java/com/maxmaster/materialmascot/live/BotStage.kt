@@ -55,9 +55,22 @@ public object BotStage {
 
 /**
  * The process-wide [MascotStatusBus], provided once at the app root.
- * Every [LiveBot] reads its mood from here.
+ *
+ * Install with `CompositionLocalProvider(LocalMascotStatus provides bus)` at
+ * the activity root; every [LiveBot] below that point mirrors the bus mood.
+ * Left null, [LiveBot] falls back to its config's static state and the
+ * status-bus feature is simply absent — no crash, no fallback UI.
  */
 public val LocalMascotStatus = staticCompositionLocalOf<MascotStatusBus?> { null }
 
-/** Provided at the activity root; null where the shake feature is not installed. */
+/**
+ * The activity-wide [ShakeDizzyController], provided at the app root next to
+ * [LocalMascotStatus].
+ *
+ * The controller is constructed and owned by the host (see
+ * [ShakeDizzyEffect] for the recommended installation), so it is public API:
+ * hosts create it, provide it here, and any [LiveBot] or custom renderer
+ * reading this local picks up shake-to-dizzy. Null where the feature is not
+ * installed; consumers must treat null as "no wobble, no Silly face".
+ */
 public val LocalShakeDizzy = staticCompositionLocalOf<ShakeDizzyController?> { null }

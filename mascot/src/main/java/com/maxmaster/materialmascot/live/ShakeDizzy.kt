@@ -50,10 +50,15 @@ public class ShakeDizzyController(
     private val vibrationEnabled: () -> Boolean = { true }
 ) : SensorEventListener {
 
-    /** 0 = sober, 1 = very dizzy. Draw-phase observable. */
+    /** Current dizziness: 0 = sober, 1+ = very dizzy.
+     *
+     * Backed by snapshot state intended to be read inside draw-phase lambdas
+     * (graphicsLayer), so watching it costs redraws only — never recomposition.
+     * Hosts may also read it in composition (e.g. swap the face past
+     * [DIZZY_FACE_THRESHOLD]); writes happen only inside the library. */
     public val level = mutableFloatStateOf(0f)
 
-    /** Frame phase for the wobble; advanced only while dizzy. */
+    /** Frame phase for the wobble; advanced only while dizzy. Draw-phase observable. */
     public val phase = mutableFloatStateOf(0f)
 
     private var lastShakeAt = 0L

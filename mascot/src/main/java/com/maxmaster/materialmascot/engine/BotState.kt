@@ -112,7 +112,11 @@ public val TEAR_POINTS: Array<androidx.compose.ui.geometry.Offset> by lazy {
 
 /** Three-dot layout of the processing animation, measured off the video. */
 public val DOT_X = floatArrayOf(-0.557f, -0.013f, 0.532f)
+
+/** Radius of the processing dots, in ball-radius units. */
 public const val DOT_R = 0.165f
+
+/** Peak scale factor of a processing dot at the top of its pulse. */
 public const val DOT_PEAK = 1.25f
 
 /** Left-to-right pulse wave traveling across the three dots. */
@@ -696,8 +700,18 @@ public sealed class BotState(
 }
 
 /** Notification badge constants, measured (bloub decor.ts). */
+
+/** Badge fill color (bloub blue). */
 public const val NOTIF_BLUE: Long = 0xFF2496E8
+
+/** Badge anchor angle around the ball, degrees (screen coords, Y down). */
 public const val NOTIF_ANGLE = -42f
+
+/** Badge anchor distance from center, in ball-radius units. */
 public const val NOTIF_DIST = 1.003f
+
+/** Badge radius at rest, in ball-radius units. */
 public const val NOTIF_R = 0.15f
+
+/** Entry overshoot multiplier of the badge pop (~+9% at peak). */
 public const val NOTIF_POP = 1.09f

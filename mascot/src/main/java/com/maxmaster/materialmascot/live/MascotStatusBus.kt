@@ -23,6 +23,9 @@ public enum class MascotStatus { IDLE, WORKING, SLOW, SUCCESS, ERROR }
 
 /**
  * What the bus is currently busy with; a free-form tag owned by the host app.
+ *
+ * @property status Aggregated status of the highest-priority running operation.
+ * @property tag Tag of the operation behind [status]; null when idle.
  */
 public data class MascotBusState(
     val status: MascotStatus = MascotStatus.IDLE,
