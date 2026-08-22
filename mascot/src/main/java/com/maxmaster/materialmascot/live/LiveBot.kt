@@ -1,6 +1,6 @@
 /*
  * Material Mascot — a living bot avatar for Android apps.
- * Copyright (C) 2026 Skald contributors
+ * Copyright (C) 2026 Max Master
  * SPDX-License-Identifier: MIT
  */
 

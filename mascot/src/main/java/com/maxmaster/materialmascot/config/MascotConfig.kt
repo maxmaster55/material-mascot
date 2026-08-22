@@ -1,3 +1,9 @@
+/*
+ * Material Mascot — a living bot avatar for Android apps.
+ * Copyright (C) 2026 Max Master
+ * SPDX-License-Identifier: MIT
+ */
+
 package com.maxmaster.materialmascot.config
 
 import androidx.compose.runtime.Immutable
