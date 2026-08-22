@@ -1,7 +1,7 @@
 /*
  * Material Mascot — a living bot avatar for Android apps.
  * Copyright (C) 2026 Skald contributors
- * SPDX-License-Identifier: GPL-3.0-only
+ * SPDX-License-Identifier: MIT
  */
 
 package com.maxmaster.materialmascot.live
@@ -25,9 +25,18 @@ import com.maxmaster.materialmascot.ui.MaterialBot
  *
  * The wobble modifier is applied here unconditionally, which is what makes
  * even bots that never heard of the sensor react to vibrations.
+ *
+ * This is the recommended entry point for apps that want the full "living
+ * companion" behavior with shake reactions and status-bus-driven mood.
+ * For full control, use [MaterialBot] directly with [MascotConfig].
+ *
+ * @param config Host-owned immutable configuration.
+ * @param modifier Layout modifier.
+ * @param state Optional explicit state override (takes precedence over status bus).
+ * @param contentDescription Accessibility label; null omits the semantics node.
  */
 @Composable
-fun LiveBot(
+public fun LiveBot(
     config: MascotConfig,
     modifier: Modifier = Modifier,
     state: BotState? = null,

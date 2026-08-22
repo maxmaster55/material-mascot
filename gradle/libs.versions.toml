@@ -1,0 +1,46 @@
+[versions]
+agp = "8.11.1"
+kotlin = "2.2.0"
+composeCompiler = "2.2.0"
+compileSdk = "36"
+minSdk = "26"
+coreKtx = "1.17.0"
+composeFoundation = "1.9.3"
+composeUi = "1.9.3"
+composeMaterial3 = "1.5.0-alpha06"
+lifecycle = "2.9.1"
+junit = "4.13.2"
+
+[libraries]
+# Android Gradle Plugin
+android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+kotlin-android = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+kotlin-compose = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" } # Uses Compose compiler plugin
+
+# AndroidX
+core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
+
+# Compose
+compose-foundation = { module = "androidx.compose.foundation:foundation", version.ref = "composeFoundation" }
+compose-ui = { module = "androidx.compose.ui:ui", version.ref = "composeUi" }
+compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics", version.ref = "composeUi" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "composeUi" }
+compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling", version.ref = "composeUi" }
+compose-material3 = { module = "androidx.compose.material3:material3", version.ref = "composeMaterial3" }
+
+# Lifecycle
+lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+
+# Testing
+junit = { module = "junit:junit", version.ref = "junit" }
+
+# Material Mascot (this library)
+material-mascot = { module = "com.maxmaster.materialmascot:mascot", version = "1.0.0" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+maven-publish = { id = "maven-publish" }

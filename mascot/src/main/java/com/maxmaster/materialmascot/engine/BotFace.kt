@@ -11,50 +11,69 @@ package com.maxmaster.materialmascot.engine
  *
  * Constants below are fitted on frame-by-frame measurements (residual ~1 px
  * for a radius of 190 px), not hand-picked.
+ *
+ * This is an internal object used by [BotEngine]. Most users will not
+ * interact with this directly.
  */
-object Face {
+internal object Face {
     /** Half-separation of the eyes on the sphere, degrees (~31 deg total). */
-    const val EYE_SPLIT = 15.46f
+    internal const val EYE_SPLIT = 15.46f
 
     /** Resting eye size, in ball-radius units. */
-    const val EYE_W = 0.186f
-    const val EYE_H = 0.412f
+    internal const val EYE_W = 0.186f
+    internal const val EYE_H = 0.412f
 
     /** Resting head orientation, fitted on reference frames. */
-    val REST_GAZE = HeadGaze(yaw = 28.49f, pitch = 28.62f, roll = -13f)
+    internal val REST_GAZE = HeadGaze(yaw = 28.49f, pitch = 28.62f, roll = -13f)
 }
 
-data class HeadGaze(
+/**
+ * Head orientation in degrees.
+ *
+ * This is an internal data class used by [BotEngine]. Most users will not
+ * interact with this directly.
+ */
+internal data class HeadGaze(
     /** yaw, degrees, positive = looks right */
-    val yaw: Float,
+    public val yaw: Float,
     /** pitch, degrees, positive = looks up */
-    val pitch: Float,
+    public val pitch: Float,
     /** roll, degrees, head tilt */
-    val roll: Float
+    public val roll: Float
 )
 
-/** Local eye config in ball-radius units; [open] 1 = open, 0 = closed. */
-data class EyeCfg(
-    val w: Float,
-    val h: Float,
-    val open: Float = 1f,
+/**
+ * Local eye config in ball-radius units; [open] 1 = open, 0 = closed.
+ *
+ * This is an internal data class used by [BotEngine]. Most users will not
+ * interact with this directly.
+ */
+internal data class EyeCfg(
+    public val w: Float,
+    public val h: Float,
+    public val open: Float = 1f,
     /**
      * Own tilt of the capsule, degrees, positive = top leans right (screen
      * coords). Applied AFTER the tangent frame of the sphere.
      */
-    val tilt: Float = 0f
+    public val tilt: Float = 0f
 )
 
-/** One eye's placement: center + tangent 2x2 matrix columns + depth. */
-data class EyePose(
-    val x: Float,
-    val y: Float,
-    val a: Float,
-    val b: Float,
-    val c: Float,
-    val d: Float,
+/**
+ * One eye's placement: center + tangent 2x2 matrix columns + depth.
+ *
+ * This is an internal data class used by [BotEngine]. Most users will not
+ * interact with this directly.
+ */
+internal data class EyePose(
+    public val x: Float,
+    public val y: Float,
+    public val a: Float,
+    public val b: Float,
+    public val c: Float,
+    public val d: Float,
     /** z component of the normal: > 0 = facing visible */
-    val depth: Float
+    public val depth: Float
 )
 
 private fun deg(d: Float): Float = d * (Math.PI.toFloat() / 180f)
@@ -78,8 +97,11 @@ private fun spin(u: FloatArray, v: FloatArray, angle: Float): Pair<FloatArray, F
  * Head then eye frames.
  * Screen frame: x right, y down, z toward the viewer.
  * Index 0 is the inner eye, index 1 the outer one.
+ *
+ * This is an internal function used by [BotEngine]. Most users will not
+ * interact with this directly.
  */
-fun eyePoses(gaze: HeadGaze, scale: Float, split: Float = Face.EYE_SPLIT): Pair<EyePose, EyePose> {
+internal fun eyePoses(gaze: HeadGaze, scale: Float, split: Float = Face.EYE_SPLIT): Pair<EyePose, EyePose> {
     var f = floatArrayOf(0f, 0f, 1f)
     var right = floatArrayOf(1f, 0f, 0f)
     var down = floatArrayOf(0f, 1f, 0f)
@@ -116,22 +138,25 @@ fun eyePoses(gaze: HeadGaze, scale: Float, split: Float = Face.EYE_SPLIT): Pair<
  * Life at rest: slow gaze drift, saccades, blinks.
  *
  * Pure function of time (no internal state), so pause, resume and jumping to
- * an arbitrary date always give the same image. Values are DELTAS added to the
+ * an arbitrary date always give the same image. Values are DELTAs added to the
  * current state's pose.
+ *
+ * This is an internal data class used by [BotEngine]. Most users will not
+ * interact with this directly.
  */
-data class Liveliness(
-    val dYaw: Float,
-    val dPitch: Float,
-    val dRoll: Float,
+internal data class Liveliness(
+    public val dYaw: Float,
+    public val dPitch: Float,
+    public val dRoll: Float,
     /** 1 = eye open, 0 = closed (vertical screen-space squash) */
-    val lid: Float,
-    val driftX: Float,
-    val driftY: Float,
-    val breath: Float
+    public val lid: Float,
+    public val driftX: Float,
+    public val driftY: Float,
+    public val breath: Float
 )
 
 /** Pre-drawn blink calendar: deterministic and stateless. */
-val BLINKS: FloatArray = run {
+internal val BLINKS: FloatArray = run {
     val rng = Mulberry32(0x5eed)
     val out = ArrayList<Float>()
     var t = 1.4f
@@ -148,9 +173,9 @@ val BLINKS: FloatArray = run {
 }
 
 /** Measured: 1 to 2 frames at 10 fps. */
-const val BLINK_DUR = 0.18f
+internal const val BLINK_DUR = 0.18f
 
-fun blinkLid(t: Float): Float {
+internal fun blinkLid(t: Float): Float {
     for (start in BLINKS) {
         if (t < start) break
         val k = (t - start) / BLINK_DUR
@@ -194,7 +219,7 @@ private fun smooth(x: Float): Float {
 }
 
 /** Current saccade offset (yaw, pitch) in degrees, held flat between jumps. */
-fun saccadeOffset(t: Float): Pair<Float, Float> {
+internal fun saccadeOffset(t: Float): Pair<Float, Float> {
     var prevY = 0f
     var prevP = 0f
     var i = 0
@@ -235,7 +260,7 @@ private val GLANCES: FloatArray = run {
 }
 
 /** Current glance offset (yaw, pitch) in degrees, trapezoid-enveloped. */
-fun glanceOffset(t: Float): Pair<Float, Float> {
+internal fun glanceOffset(t: Float): Pair<Float, Float> {
     var i = 0
     while (i + 3 < GLANCES.size && GLANCES[i] <= t) {
         val u = t - GLANCES[i]
@@ -267,7 +292,7 @@ private val SQUINTS: FloatArray = run {
     out.toFloatArray()
 }
 
-fun squintLid(t: Float): Float {
+internal fun squintLid(t: Float): Float {
     var i = 0
     while (i + 2 < SQUINTS.size && SQUINTS[i] <= t) {
         val u = t - SQUINTS[i]
@@ -316,7 +341,7 @@ private val FIDGETS: List<Fidget> = run {
  * The active micro-fidget at [ts]: (yawAdd, pitchAdd) degrees plus a lid
  * MULTIPLIER in [0.35, 1]. Zero/neutral between events.
  */
-fun fidget(ts: Float): Triple<Float, Float, Float> {
+internal fun fidget(ts: Float): Triple<Float, Float, Float> {
     var current: Fidget? = null
     for (f in FIDGETS) {
         if (f.start > ts) break
@@ -348,7 +373,7 @@ fun fidget(ts: Float): Triple<Float, Float, Float> {
     }
 }
 
-fun liveliness(
+internal fun liveliness(
     t: Float,
     wander: Float = 1f,
     blink: Boolean = true,
@@ -395,4 +420,4 @@ fun liveliness(
  * (measured: bbox width preserved, height falls to ~0.35), not a shrink along
  * the capsule axis. Applied after the tangent matrix, only affecting y outs.
  */
-fun blinkScale(lid: Float): Float = 0.06f + 0.94f * clamp(lid)
+internal fun blinkScale(lid: Float): Float = 0.06f + 0.94f * clamp(lid)

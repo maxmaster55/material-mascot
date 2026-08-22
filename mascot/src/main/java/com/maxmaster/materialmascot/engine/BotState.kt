@@ -7,33 +7,36 @@ import kotlin.math.sin
 
 /** A decorative dot: circle, or the teardrop of the "!" glyph when [tear].
  *  [onBody] dots are painted on top of the body in the eye color. */
-data class DotSpec(
-    val x: Float,
-    val y: Float,
-    val r: Float,
-    val alpha: Float = 1f,
-    val tear: Boolean = false,
-    val rotDeg: Float = 0f,
-    val onBody: Boolean = false
+public data class DotSpec(
+    public val x: Float,
+    public val y: Float,
+    public val r: Float,
+    public val alpha: Float = 1f,
+    public val tear: Boolean = false,
+    public val rotDeg: Float = 0f,
+    public val onBody: Boolean = false
 )
 
 /** Notification badge, positioned in ball-radius units. */
-data class NotifSpec(val x: Float, val y: Float, val r: Float)
+public data class NotifSpec(public val x: Float, public val y: Float, public val r: Float)
 
 /**
  * One instant of the bot: silhouette, head orientation, eye configs and decor.
  * All geometry lives in ball-radius units (resting ball radius = 1).
+ *
+ * This is an internal data class used by [BotEngine]. Most users will not
+ * interact with this directly.
  */
-class Pose(
-    val sil: Silhouette,
-    val gaze: HeadGaze = Face.REST_GAZE,
-    val split: Float = Face.EYE_SPLIT,
-    val eye0: EyeCfg = EyeCfg(Face.EYE_W, Face.EYE_H),
-    val eye1: EyeCfg = EyeCfg(Face.EYE_W, Face.EYE_H),
-    val eyeAlpha: Float = 1f,
-    val dots: List<DotSpec> = emptyList(),
-    val arcs: List<ArcSpec> = emptyList(),
-    val notif: NotifSpec? = null
+internal class Pose(
+    public val sil: Silhouette,
+    public val gaze: HeadGaze = Face.REST_GAZE,
+    public val split: Float = Face.EYE_SPLIT,
+    public val eye0: EyeCfg = EyeCfg(Face.EYE_W, Face.EYE_H),
+    public val eye1: EyeCfg = EyeCfg(Face.EYE_W, Face.EYE_H),
+    public val eyeAlpha: Float = 1f,
+    public val dots: List<DotSpec> = emptyList(),
+    public val arcs: List<ArcSpec> = emptyList(),
+    public val notif: NotifSpec? = null
 )
 
 private fun basePose(
@@ -95,19 +98,19 @@ private val BAR_ITALIC_RADII =
  * The dot of the tilted "!" is a teardrop: round end (r 0.118) toward the bar,
  * pointed tail opposite, length 0.300 along the glyph axis.
  */
-val TEAR_POINTS: Array<androidx.compose.ui.geometry.Offset> by lazy {
+public val TEAR_POINTS: Array<androidx.compose.ui.geometry.Offset> by lazy {
     hullOfCirclesPoints(0f, 0f, 0.118f, 0f, 0.172f, 0.012f)
 }
 
 /* ------------------------------------------------------------ state utils */
 
 /** Three-dot layout of the processing animation, measured off the video. */
-val DOT_X = floatArrayOf(-0.557f, -0.013f, 0.532f)
-const val DOT_R = 0.165f
-const val DOT_PEAK = 1.25f
+public val DOT_X = floatArrayOf(-0.557f, -0.013f, 0.532f)
+public const val DOT_R = 0.165f
+public const val DOT_PEAK = 1.25f
 
 /** Left-to-right pulse wave traveling across the three dots. */
-fun dotPulse(t: Float, index: Int): Float {
+public fun dotPulse(t: Float, index: Int): Float {
     val raw = (t - index * 0.32f) / 1.0f
     val p = raw - kotlin.math.floor(raw)
     val k = if (p < 0.5f) 0.5f - 0.5f * cos(p * TAU) else 0f
@@ -156,34 +159,52 @@ private fun dotsPose(t: Float): Pose {
  * - Confused: mismatched eyes with mirrored tilts
  * - Sleepy: small bouncing ball, standby
  * - Notify: round wide eyes + blue notification badge pop
+ *
+ * Additional expressive states:
+ * - Narrating: reading aloud, eyes lowered toward content
+ * - Sad: droopy mirrored tilts, soft breathing
+ * - Love: round shining eyes, giddy sway
+ * - Silly: crossed mismatched tilts, goofball
+ * - Egg: egg-shaped body
+ * - Hexagon: hexagonal body
+ *
+ * Playful shape morphs (from bloub):
+ * - Play: tumbling rounded triangle
+ * - Burst: collapse to pebble with spiral sparkles
+ * - Comet: shrink to comet dot with orbiting trail
+ * - Orbit: triangle tumble with concentric rings
+ * - Swirl: compressed ring flourish
+ * - Exclaim: upright "!" glyph
  */
-sealed class BotState(
-    val name: String,
-    /** duration of the entry morph, seconds */
-    val morphSeconds: Float,
+public sealed class BotState(
+    /** Unique identifier for this state (lowercase, e.g. "idle", "thinking"). */
+    public val name: String,
+    /** Duration of the entry morph, in seconds. */
+    public val morphSeconds: Float,
     /**
      * Period of the periodic part of [poseFn], in pose-clock ms — the TAU
      * denominator of the silhouette bob / dot orbit / collapse cycle. Hosts
      * that tile the animation (widget loop frames) sweep exactly this period
      * so their wrap stays seamless when poses change. 0 = static geometry.
      */
-    val posePeriodMs: Long = 0L,
+    public val posePeriodMs: Long = 0L,
     /** true = the entry is masked by a blink, as in the reference video */
-    val blinkIn: Boolean,
-    /** local state time (seconds) -> pose */
+    public val blinkIn: Boolean,
+    /** Local state time (seconds) -> pose. Internal use only. */
     internal val poseFn: (Float) -> Pose
 ) {
     // --- Core States ---
 
-    object Idle : BotState(
+    /**
+     * Calm breathing ball with friendly eyes facing the viewer.
+     * Gentle happy bob on top of the rest life.
+     */
+    public object Idle : BotState(
         name = "idle",
         morphSeconds = 0.32f,
         posePeriodMs = 1700L,
         blinkIn = false,
         poseFn = { t ->
-            // Always a little alive: gentle happy bob on top of the rest life.
-            // Faces the viewer directly (the video's sideways glance reads as
-            // odd for a companion), with big friendly eyes.
             basePose(
                 sil = circle(1f, cy = sin(t * (TAU / 1.7f)) * 0.006f),
                 gaze = HeadGaze(yaw = 0f, pitch = 8f, roll = -8f),
@@ -193,7 +214,11 @@ sealed class BotState(
         }
     )
 
-    object Listening : BotState(
+    /**
+     * Wide surprised eyes ("wide" state) — attentive listening pose.
+     * Entry masked by a blink.
+     */
+    public object Listening : BotState(
         name = "listening",
         morphSeconds = 0.38f,
         blinkIn = true,
@@ -207,7 +232,12 @@ sealed class BotState(
         }
     )
 
-    object Thinking : BotState(
+    /**
+     * Three pulsing dots orbiting on the belly, no face.
+     * Body keeps full size while dots chase each other with depth.
+     * Entry masked by a blink.
+     */
+    public object Thinking : BotState(
         name = "thinking",
         morphSeconds = 0.28f,
         posePeriodMs = 2400L,
@@ -215,13 +245,16 @@ sealed class BotState(
         poseFn = ::dotsPose
     )
 
-    object Responding : BotState(
+    /**
+     * Lively ball with slightly raised gaze and cheerful micro-bounce.
+     * Streaming a reply.
+     */
+    public object Responding : BotState(
         name = "responding",
         morphSeconds = 0.32f,
         posePeriodMs = 800L,
         blinkIn = false,
         poseFn = { t ->
-            // Cheerful micro-bounce while streaming a reply.
             val bob = sin(t * (TAU / 0.8f)) * 0.018f
             basePose(
                 sil = circle(1f, cy = bob),
@@ -233,14 +266,16 @@ sealed class BotState(
         }
     )
 
-    object Alert : BotState(
+    /**
+     * Alarmed pose: ball stays full size, stretches a touch, vibrates at 2.5 Hz,
+     * opens huge round eyes. No blink on entry.
+     */
+    public object Alert : BotState(
         name = "alert",
         morphSeconds = 0.32f,
         posePeriodMs = 400L,
         blinkIn = false,
         poseFn = { t ->
-            // Alarmed, not transformed: the ball stays full size, stretches a
-            // touch, vibrates at 2.5 Hz and opens huge round eyes.
             val buzz = sin(t * 2.5f * TAU) * 0.006f
             basePose(
                 sil = circle(1f, cx = buzz, sx = 1.08f),
@@ -252,13 +287,15 @@ sealed class BotState(
         }
     )
 
-    object Exclaim : BotState(
+    /**
+     * Upright "!" glyph: tapered bar with dot below, no face.
+     * Static geometry.
+     */
+    public object Exclaim : BotState(
         name = "exclaim",
         morphSeconds = 0.45f,
         blinkIn = false,
         poseFn = { _ ->
-            // The upright "!": the tapered bar glyph with its dot below,
-            // no face. Static geometry.
             basePose(
                 sil = Silhouette(BAR_UPRIGHT_RADII),
                 eyeAlpha = 0f,
@@ -267,7 +304,11 @@ sealed class BotState(
         }
     )
 
-    object Happy : BotState(
+    /**
+     * Wink: one eye closed as a horizontal dash wider than the open eye.
+     * Entry masked by a blink.
+     */
+    public object Happy : BotState(
         name = "happy",
         morphSeconds = 0.22f,
         blinkIn = true,
@@ -275,21 +316,21 @@ sealed class BotState(
             basePose(
                 gaze = HeadGaze(yaw = -5.37f, pitch = 4.55f, roll = 6.7f),
                 split = 16.25f,
-                // The closed eye is not the open eye squashed: it is a
-                // horizontal dash WIDER than the open eye (0.447 vs 0.236).
                 w0 = 0.236f, h0 = 0.464f,
                 w1 = 0.447f, h1 = 0.089f
             )
         }
     )
 
-    object Confused : BotState(
+    /**
+     * Mismatched mirrored-tilt eyes with size mismatch.
+     * Per-eye tilt enables this exact expression.
+     */
+    public object Confused : BotState(
         name = "confused",
         morphSeconds = 0.28f,
         blinkIn = false,
         poseFn = { _ ->
-            // Mirrored tilts between the two eyes are exactly what per-eye
-            // tilt enables (see bloub EyeCfg.tilt); sizes mismatch too.
             basePose(
                 gaze = HeadGaze(yaw = -14f, pitch = 2f, roll = -26f),
                 split = 15f,
@@ -299,11 +340,12 @@ sealed class BotState(
         }
     )
 
-    object Sleepy : BotState(
+    /**
+     * Softly breathing ball with droopy closed-eye dashes, plus one dream
+     * bubble that drifts up beside it and pops every 2.8 s.
+     */
+    public object Sleepy : BotState(
         name = "sleepy",
-        // Reads unmistakably as sleepy: a softly breathing ball with droopy
-        // closed-eye dashes, plus one dream bubble that drifts up beside it
-        // and pops every 2.8 s breath - the 'zzz' without glyphs.
         morphSeconds = 0.5f,
         posePeriodMs = 2800L,
         blinkIn = false,
@@ -327,18 +369,20 @@ sealed class BotState(
         }
     )
 
-    object Notify : BotState(
+    /**
+     * Round wide eyes + blue notification badge pop (peak +14% around 0.3 s).
+     * Gaze moves away from the badge. Entry masked by a blink.
+     */
+    public object Notify : BotState(
         name = "notify",
         morphSeconds = 0.35f,
         blinkIn = true,
         poseFn = { t ->
-            // Blue badge pop: peak at +14 % around 0.3 s then settling.
             val p = clamp(t / 0.45f)
             val pop = 1f + (NOTIF_POP - 1f) * sin(p * PI.toFloat()) * (1f - p * 0.35f)
             val r = NOTIF_R * if (p < 1f) pop else 1f
             val a = NOTIF_ANGLE * PI.toFloat() / 180f
             basePose(
-                // The gaze moves away from the badge.
                 gaze = HeadGaze(yaw = -21.94f, pitch = -5.82f, roll = -12.2f),
                 split = 18.89f,
                 w0 = 0.505f, h0 = 0.498f,
@@ -348,7 +392,11 @@ sealed class BotState(
         }
     )
 
-    object Working : BotState(
+    /**
+     * Alias of [Thinking] with same pulsing dots animation.
+     * Use for background work that isn't user-facing "thinking".
+     */
+    public object Working : BotState(
         name = "working",
         morphSeconds = 0.28f,
         posePeriodMs = 2400L,
@@ -356,14 +404,16 @@ sealed class BotState(
         poseFn = ::dotsPose
     )
 
-    object Narrating : BotState(
+    /**
+     * Companion reads aloud: eyes lowered toward the book, soft bob at speaking
+     * cadence, relaxed half-lowered capsules. Entry masked by a blink.
+     */
+    public object Narrating : BotState(
         name = "narrating",
         morphSeconds = 0.32f,
         posePeriodMs = 1100L,
         blinkIn = true,
         poseFn = { t ->
-            // The companion reads aloud: eyes lowered toward the book, a soft
-            // bob at speaking cadence, relaxed half-lowered capsules.
             basePose(
                 sil = circle(1f, cy = sin(t * (TAU / 1.1f)) * 0.010f),
                 gaze = HeadGaze(yaw = 0f, pitch = -16f, roll = -8f),
@@ -373,13 +423,15 @@ sealed class BotState(
         }
     )
 
-    object Sad : BotState(
+    /**
+     * Mirrored droopy tilts, soft breathing with a slow sigh rhythm.
+     */
+    public object Sad : BotState(
         name = "sad",
         morphSeconds = 0.35f,
         posePeriodMs = 3200L,
         blinkIn = false,
         poseFn = { t ->
-            // Mirrored droopy tilts are exactly what per-eye tilt enables.
             val sigh = sin(t * (TAU / 3.2f)) * 0.006f
             basePose(
                 sil = circle(1f, sy = 0.96f, cy = sigh),
@@ -391,13 +443,15 @@ sealed class BotState(
         }
     )
 
-    object Love : BotState(
+    /**
+     * Round shining eyes and a giddy sway.
+     */
+    public object Love : BotState(
         name = "love",
         morphSeconds = 0.28f,
         posePeriodMs = 1400L,
         blinkIn = false,
         poseFn = { t ->
-            // Round shining eyes and a giddy sway.
             basePose(
                 sil = circle(1f, cx = sin(t * (TAU / 1.4f)) * 0.008f),
                 gaze = HeadGaze(yaw = 0f, pitch = 10f, roll = -10f + sin(t * (TAU / 1.4f)) * 5f),
@@ -408,12 +462,15 @@ sealed class BotState(
         }
     )
 
-    object Silly : BotState(
+    /**
+     * Crossed mismatched tilts: pure goofball.
+     * Entry masked by a blink.
+     */
+    public object Silly : BotState(
         name = "silly",
         morphSeconds = 0.3f,
         blinkIn = true,
         poseFn = { _ ->
-            // Crossed mismatched tilts: pure goofball.
             basePose(
                 gaze = HeadGaze(yaw = 6f, pitch = -4f, roll = 14f),
                 split = 13f,
@@ -423,13 +480,15 @@ sealed class BotState(
         }
     )
 
-    object Egg : BotState(
+    /**
+     * Egg-shaped body with measured face, straightened to face the viewer.
+     * Entry masked by a blink.
+     */
+    public object Egg : BotState(
         name = "egg",
         morphSeconds = 0.4f,
         blinkIn = true,
         poseFn = { _ ->
-            // bloub's egg body with its measured face, straightened to face
-            // the viewer.
             basePose(
                 sil = Silhouette(EGG_RADII),
                 gaze = HeadGaze(yaw = 8f, pitch = 20f, roll = -14f),
@@ -440,7 +499,11 @@ sealed class BotState(
         }
     )
 
-    object Hexagon : BotState(
+    /**
+     * Hexagonal body with rounded corners.
+     * Entry masked by a blink.
+     */
+    public object Hexagon : BotState(
         name = "hexagon",
         morphSeconds = 0.4f,
         blinkIn = true,
@@ -457,7 +520,11 @@ sealed class BotState(
 
     // --- bloub's playful shape morphs ---
 
-    object Play : BotState(
+    /**
+     * Tumbling rounded "play" triangle with orbiting center.
+     * Entry masked by a blink.
+     */
+    public object Play : BotState(
         name = "play",
         morphSeconds = 0.5f,
         posePeriodMs = 3000L,
@@ -481,9 +548,9 @@ sealed class BotState(
 
     /**
      * Collapse to a pebble while sparkles spiral in and get eaten, then pop
-     * back to the ball. Internally periodic (2.6 s), like bloub's block.
+     * back to the ball. Internally periodic (2.6 s).
      */
-    object Burst : BotState(
+    public object Burst : BotState(
         name = "burst",
         morphSeconds = 0.4f,
         posePeriodMs = 2600L,
@@ -512,8 +579,10 @@ sealed class BotState(
         }
     )
 
-    /** Shrink to a comet dot with a gentle wobble and a tiny orbiting trail. */
-    object Comet : BotState(
+    /**
+     * Shrink to a comet dot with a gentle wobble and a tiny orbiting trail.
+     */
+    public object Comet : BotState(
         name = "comet",
         morphSeconds = 0.45f,
         posePeriodMs = 2400L,
@@ -544,10 +613,9 @@ sealed class BotState(
 
     /**
      * Triangle lets go: one fast tumble out while concentric rings bloom,
-     * then a long settle back into the resting ball. Internally periodic
-     * (3.4 s), like bloub's block.
+     * then a long settle back into the resting ball. Internally periodic (3.4 s).
      */
-    object Orbit : BotState(
+    public object Orbit : BotState(
         name = "orbit",
         morphSeconds = 0.6f,
         posePeriodMs = 3400L,
@@ -581,8 +649,10 @@ sealed class BotState(
         }
     )
 
-    /** Same ring vocabulary as [Orbit], compressed to a one-second flourish. */
-    object Swirl : BotState(
+    /**
+     * Same ring vocabulary as [Orbit], compressed to a one-second flourish.
+     */
+    public object Swirl : BotState(
         name = "swirl",
         morphSeconds = 0.35f,
         posePeriodMs = 1000L,
@@ -601,7 +671,8 @@ sealed class BotState(
     companion object {
         // Lazy so the registry never builds during the sealed class's own
         // initialization window.
-        val all: List<BotState> by lazy {
+        /** All available [BotState] objects in a fixed order. */
+        public val all: List<BotState> by lazy {
             listOf(
                 Idle, Listening, Thinking, Responding, Alert, Happy, Confused,
                 Sleepy, Notify, Working, Narrating, Sad, Love, Silly, Egg,
@@ -609,14 +680,18 @@ sealed class BotState(
             )
         }
 
-        fun fromName(name: String): BotState =
+        /**
+         * Finds a [BotState] by name (case-insensitive).
+         * Returns [Idle] if not found.
+         */
+        public fun fromName(name: String): BotState =
             all.find { it.name.equals(name, ignoreCase = true) } ?: Idle
     }
 }
 
 /** Notification badge constants, measured (bloub decor.ts). */
-const val NOTIF_BLUE: Long = 0xFF2496E8
-const val NOTIF_ANGLE = -42f
-const val NOTIF_DIST = 1.003f
-const val NOTIF_R = 0.15f
-const val NOTIF_POP = 1.09f
+public const val NOTIF_BLUE: Long = 0xFF2496E8
+public const val NOTIF_ANGLE = -42f
+public const val NOTIF_DIST = 1.003f
+public const val NOTIF_R = 0.15f
+public const val NOTIF_POP = 1.09f

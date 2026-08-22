@@ -1,7 +1,7 @@
 /*
  * Material Mascot — a living bot avatar for Android apps.
  * Copyright (C) 2026 Skald contributors
- * SPDX-License-Identifier: GPL-3.0-only
+ * SPDX-License-Identifier: MIT
  */
 
 package com.maxmaster.materialmascot.live
@@ -40,7 +40,7 @@ import kotlinx.coroutines.isActive
  * The level is observable state READ INSIDE draw-phase lambdas (graphicsLayer),
  * so the wobble never triggers recomposition — only redraws.
  */
-class ShakeDizzyController(
+public class ShakeDizzyController(
     private val context: Context,
     /**
      * Queried live on every shake so hosts can expose the buzz as a runtime
@@ -51,10 +51,10 @@ class ShakeDizzyController(
 ) : SensorEventListener {
 
     /** 0 = sober, 1 = very dizzy. Draw-phase observable. */
-    val level = mutableFloatStateOf(0f)
+    public val level = mutableFloatStateOf(0f)
 
     /** Frame phase for the wobble; advanced only while dizzy. */
-    val phase = mutableFloatStateOf(0f)
+    public val phase = mutableFloatStateOf(0f)
 
     private var lastShakeAt = 0L
 
@@ -93,7 +93,7 @@ class ShakeDizzyController(
      *  jerk only staggers the bot slightly — the Silly face needs SUSTAINED
      *  intense shaking, which piles up bumps far faster than decay removes
      *  them. */
-    fun onShake(strength: Float) {
+    public fun onShake(strength: Float) {
         level.floatValue = min(level.floatValue + 0.22f + strength * 0.35f, MAX_LEVEL)
         if (!vibrationEnabled()) return
         val amp = (MIN_BUZZ + (MAX_BUZZ - MIN_BUZZ) *
@@ -105,14 +105,16 @@ class ShakeDizzyController(
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
-    fun start() {
+    /** Starts listening for shakes (call in ON_RESUME). */
+    public fun start() {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager ?: return
         sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
             sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
     }
 
-    fun stop() {
+    /** Stops listening for shakes (call in ON_PAUSE). */
+    public fun stop() {
         (context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager)
             ?.unregisterListener(this)
     }
@@ -138,14 +140,19 @@ class ShakeDizzyController(
 }
 
 /** Above this dizziness the bot's face gives up and goes Silly. */
-const val DIZZY_FACE_THRESHOLD = 0.25f
+public const val DIZZY_FACE_THRESHOLD = 0.25f
 
 /**
  * Installs the sensor listener for the current lifecycle and drives both the
  * wobble clock and the sobering-up decay while anyone is actually dizzy.
+ *
+ * Place this once at your activity root (or wherever the lifecycle is correct)
+ * to enable shake-to-dizzy for all [LiveBot] instances.
+ *
+ * @param controller A [ShakeDizzyController] instance (typically created once per app).
  */
 @Composable
-fun ShakeDizzyEffect(controller: ShakeDizzyController) {
+public fun ShakeDizzyEffect(controller: ShakeDizzyController) {
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -183,8 +190,14 @@ fun ShakeDizzyEffect(controller: ShakeDizzyController) {
  * Wobble transform for a dizzy bot: a decaying roll plus a horizontal stagger.
  * Reads draw-phase state only, so it costs recomposition exactly zero.
  * Pass [enabled] = false to honour reduced-motion preferences.
+ *
+ * This is applied automatically by [LiveBot]. Use directly if rendering
+ * [MaterialBot] yourself and you want the shake wobble.
+ *
+ * @param controller A [ShakeDizzyController] from [ShakeDizzyEffect], or null to disable.
+ * @param enabled If false, the modifier is a no-op (respects reduced-motion).
  */
-fun Modifier.dizzyWobble(controller: ShakeDizzyController?, enabled: Boolean = true): Modifier =
+public fun Modifier.dizzyWobble(controller: ShakeDizzyController?, enabled: Boolean = true): Modifier =
     composed {
         if (controller == null || !enabled) return@composed this
         val level by controller.level

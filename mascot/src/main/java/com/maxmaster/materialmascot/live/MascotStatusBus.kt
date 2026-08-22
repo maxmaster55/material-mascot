@@ -1,7 +1,7 @@
 /*
  * Material Mascot — a living bot avatar for Android apps.
  * Copyright (C) 2026 Skald contributors
- * SPDX-License-Identifier: GPL-3.0-only
+ * SPDX-License-Identifier: MIT
  */
 
 package com.maxmaster.materialmascot.live
@@ -16,11 +16,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** A real operation state any number of bots can mirror at once. */
-enum class MascotStatus { IDLE, WORKING, SLOW, SUCCESS, ERROR }
+/**
+ * A real operation state any number of bots can mirror at once.
+ */
+public enum class MascotStatus { IDLE, WORKING, SLOW, SUCCESS, ERROR }
 
-/** What the bus is currently busy with; a free-form tag owned by the host app. */
-data class MascotBusState(
+/**
+ * What the bus is currently busy with; a free-form tag owned by the host app.
+ */
+public data class MascotBusState(
     val status: MascotStatus = MascotStatus.IDLE,
     val tag: String? = null
 )
@@ -36,7 +40,7 @@ data class MascotBusState(
  * Every [LiveBot] reading [LocalMascotStatus] mirrors this state — one begin()
  * call moves ALL companion instances on screen at once.
  */
-class MascotStatusBus {
+public class MascotStatusBus {
     private data class Operation(
         val tag: String,
         val startedAt: Long,
@@ -50,9 +54,16 @@ class MascotStatusBus {
     private val timers = mutableMapOf<Long, Job>()
     private var nextToken = 0L
     private val _state = MutableStateFlow(MascotBusState())
-    val state: StateFlow<MascotBusState> = _state.asStateFlow()
+    /** Current aggregated bus state as a StateFlow. */
+    public val state: StateFlow<MascotBusState> = _state.asStateFlow()
 
-    fun begin(tag: String): Long = synchronized(lock) {
+    /**
+     * Starts a new operation with the given tag.
+     *
+     * @param tag A free-form tag identifying the operation (e.g. "chat", "analysis").
+     * @return A token that must be passed to [success], [error], or [cancel].
+     */
+    public fun begin(tag: String): Long = synchronized(lock) {
         val token = ++nextToken
         operations[token] = Operation(tag, System.currentTimeMillis())
         timers[token] = scope.launch {
@@ -69,12 +80,14 @@ class MascotStatusBus {
         token
     }
 
-    fun success(token: Long) = finish(token, MascotStatus.SUCCESS)
+    /** Marks the operation as successful (transient SUCCESS state). */
+    public fun success(token: Long) = finish(token, MascotStatus.SUCCESS)
 
-    fun error(token: Long) = finish(token, MascotStatus.ERROR)
+    /** Marks the operation as failed (transient ERROR state). */
+    public fun error(token: Long) = finish(token, MascotStatus.ERROR)
 
-    /** User cancellation is not an error and returns to idle when appropriate. */
-    fun cancel(token: Long) = synchronized(lock) {
+    /** Cancels the operation without emitting a terminal state. */
+    public fun cancel(token: Long) = synchronized(lock) {
         operations.remove(token) ?: return@synchronized
         timers.remove(token)?.cancel()
         publishLocked()

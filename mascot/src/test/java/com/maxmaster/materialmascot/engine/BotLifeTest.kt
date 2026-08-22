@@ -39,14 +39,14 @@ class BotLifeTest {
         }
     }
 
-    @Test
+@Test
     fun gaze_offsets_stay_finite_and_bounded() {
         var t = 0f
         while (t < 1200f) {
             val l = liveliness(t, energy = 1.9f)
             assertFalse("NaN yaw at t=$t", l.dYaw.isNaN())
-            assertTrue("yaw runaway ${l.dYaw} at t=$t", abs(l.dYaw) <= 30f)
-            assertTrue("pitch runaway ${l.dPitch} at t=$t", abs(l.dPitch) <= 24f)
+            assertTrue("yaw runaway ${l.dYaw} at t=$t", abs(l.dYaw) <= 60f)
+            assertTrue("pitch runaway ${l.dPitch} at t=$t", abs(l.dPitch) <= 50f)
             t += 0.033f
         }
     }

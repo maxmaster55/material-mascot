@@ -5,11 +5,11 @@ plugins {
     id("maven-publish")
 }
 
-group = "com.skald.materialmascot"
-version = "0.1.0"
+group = "com.maxmaster.materialmascot"
+version = "1.0.0"
 
 android {
-    namespace = "com.skald.materialmascot"
+    namespace = "com.maxmaster.materialmascot"
     compileSdk = 36
 
     defaultConfig {
@@ -22,9 +22,16 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
     buildFeatures { compose = true }
-    publishing { singleVariant("release") { withSourcesJar() } }
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+            withJavadocJar()
+        }
+    }
 }
 
 dependencies {
@@ -47,6 +54,33 @@ publishing {
     publications {
         register<MavenPublication>("release") {
             afterEvaluate { from(components["release"]) }
+
+            pom {
+                name.set("Material Mascot")
+                description.set("A living bot avatar for Android/Jetpack Compose — a faithful Kotlin/Canvas port of bloub, the MIT-licensed SVG recreation of the x.ai Grok avatar. Everything is drawn at runtime — no image assets.")
+                url.set("https://github.com/maxmaster/material-mascot")
+
+                licenses {
+                    license {
+                        name.set("MIT License")
+                        url.set("https://opensource.org/licenses/MIT")
+                    }
+                }
+
+                developers {
+                    developer {
+                        id.set("maxmaster")
+                        name.set("Max Master")
+                        email.set("maxmaster@example.com")
+                    }
+                }
+
+                scm {
+                    connection.set("scm:git:git://github.com/maxmaster/material-mascot.git")
+                    developerConnection.set("scm:git:ssh://github.com/maxmaster/material-mascot.git")
+                    url.set("https://github.com/maxmaster/material-mascot")
+                }
+            }
         }
     }
 }

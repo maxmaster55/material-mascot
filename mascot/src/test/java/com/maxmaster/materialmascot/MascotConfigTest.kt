@@ -41,12 +41,14 @@ class MascotConfigTest {
 
     @Test
     fun all_states_are_registered() {
+        // Order matches BotState.all
         val expected = listOf(
             BotState.Idle, BotState.Listening, BotState.Thinking, BotState.Responding,
             BotState.Alert, BotState.Happy, BotState.Confused, BotState.Sleepy,
             BotState.Notify, BotState.Working, BotState.Narrating, BotState.Sad,
             BotState.Love, BotState.Silly, BotState.Egg, BotState.Hexagon,
-            BotState.Play, BotState.Burst, BotState.Comet
+            BotState.Play, BotState.Burst, BotState.Comet, BotState.Exclaim,
+            BotState.Orbit, BotState.Swirl
         )
         assertEquals(expected, BotState.all)
     }

@@ -16,9 +16,12 @@ import kotlinx.coroutines.delay
 
 /**
  * Example: Chat UI with a bot mascot that reacts to message states.
+ *
+ * This is a sample for demonstration purposes and is not part of the public API.
+ * It is marked internal to exclude it from the published library.
  */
 @Composable
-fun ChatWithBot() {
+internal fun ChatWithBot() {
     var botState by remember { mutableStateOf<BotState>(BotState.Idle) }
     var isTyping by remember { mutableStateOf(false) }
 
@@ -72,9 +75,12 @@ private fun PreviewChatWithBot() {
 
 /**
  * Example: Accessibility-friendly version with reduced motion.
+ *
+ * This is a sample for demonstration purposes and is not part of the public API.
+ * It is marked internal to exclude it from the published library.
  */
 @Composable
-fun AccessibleBot(state: BotState) {
+internal fun AccessibleBot(state: BotState) {
     MaterialBot(
         config = MascotConfig(
             state = state,

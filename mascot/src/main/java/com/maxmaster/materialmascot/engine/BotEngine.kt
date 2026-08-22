@@ -9,12 +9,21 @@ import kotlin.math.atan2
  * Practical consequence: pause, resume, slow motion and jumping to an
  * arbitrary date give exactly the same image. Ported from bloub's engine.ts,
  * which was measured frame by frame off the x.ai reference video.
+ *
+ * This is the core rendering engine. Most users will not need to use this
+ * directly — prefer [MaterialBot] from the UI package. This class is public
+ * for advanced use cases like custom renderers, testing, or headless frame
+ * generation.
+ *
+ * @param initial The initial [BotState] to start in.
+ * @param initialTimeMs Starting time in milliseconds since epoch. Defaults to 0.
  */
-class BotEngine(
+public class BotEngine(
     initial: BotState,
     initialTimeMs: Long = 0L
 ) {
-    var cur: BotState = initial
+    /** Current state (read-only). */
+    public var cur: BotState = initial
         private set
     private var prev: BotState? = null
 
@@ -34,13 +43,17 @@ class BotEngine(
         private const val FORCED_BLINK_DUR = 0.2
     }
 
-    val state: BotState get() = cur
+    /** Current state of the engine. */
+    public val state: BotState get() = cur
 
     /**
      * State change. Only ONE slot of history is kept; a change arriving during
      * a fade freezes the current composite pose and blends from it.
+     *
+     * @param id The new [BotState] to transition to.
+     * @param nowMs Current time in milliseconds since epoch.
      */
-    fun setState(id: BotState, nowMs: Long) {
+    public fun setState(id: BotState, nowMs: Long) {
         if (id == cur) return
         val now = nowMs / 1000.0
         val morph = cur.morphSeconds.toDouble()
@@ -68,7 +81,20 @@ class BotEngine(
         return blendPose(originPose, pose, Easings.easeOutQuint((since / cur.morphSeconds).toFloat()))
     }
 
-    fun sample(
+    /**
+     * Samples a single frame of the bot at the given time.
+     *
+     * This is a pure function: same inputs always produce the same [BotFrame].
+     * No internal state is mutated — all animation state derives from [nowMs].
+     *
+     * @param nowMs Current time in milliseconds since epoch.
+     * @param scalePx The bot's ball radius in pixels (canvas half-side * RADIUS_FRACTION).
+     * @param reducedMotion If true, disables decorative motion (gaze drift, breathing, positional float).
+     * @param energy Liveliness multiplier (1.0 = reference video calm, higher = more active).
+     * @param eyeStyle Eye shape personality transform.
+     * @return A [BotFrame] containing all geometry needed to render the bot.
+     */
+    public fun sample(
         nowMs: Long,
         scalePx: Float,
         reducedMotion: Boolean = false,
@@ -192,35 +218,63 @@ class BotEngine(
     }
 }
 
-/** Pure data: what a bot looks like at one instant, in canvas pixels around (0,0). */
-data class BotFrame(
-    val bodyPoints: List<Offset>,
-    val eyes: List<RenderedEye>,
-    val dots: List<DotSpec>,
-    val arcs: List<ArcSpec> = emptyList(),
-    val notif: NotifBadge?,
-    val state: BotState
+/**
+ * Pure data: what a bot looks like at one instant, in canvas pixels around (0,0).
+ *
+ * This is the output of [BotEngine.sample] and contains all geometry needed to
+ * render the bot. The coordinate system is centered at (0,0) with Y down.
+ */
+public data class BotFrame(
+    /** Body silhouette points (64 points forming a closed loop). */
+    public val bodyPoints: List<Offset>,
+    /** Rendered eyes, ready to draw. */
+    public val eyes: List<RenderedEye>,
+    /** Decorative dots (pulsing dots, notification badge dot, etc.). */
+    public val dots: List<DotSpec>,
+    /** Decorative arcs/rings. */
+    public val arcs: List<ArcSpec> = emptyList(),
+    /** Notification badge, if any. */
+    public val notif: NotifBadge?,
+    /** The [BotState] this frame represents. */
+    public val state: BotState
 )
 
 /**
  * One eye ready to draw: affine matrix columns (a,b)/(c,d) plus vertical blink
  * squash [blinkK], applied exactly like bloub's SVG matrix(a, b*k, c, d*k, tx, ty).
  */
-data class RenderedEye(
-    val tx: Float,
-    val ty: Float,
-    val a: Float,
-    val b: Float,
-    val c: Float,
-    val d: Float,
-    val blinkK: Float,
-    val wPx: Float,
-    val hPx: Float,
-    val alpha: Float
+public data class RenderedEye(
+    /** X translation in pixels. */
+    public val tx: Float,
+    /** Y translation in pixels. */
+    public val ty: Float,
+    /** Matrix column 0, row 0 (X scale / shear). */
+    public val a: Float,
+    /** Matrix column 0, row 1 (Y shear). */
+    public val b: Float,
+    /** Matrix column 1, row 0 (X shear). */
+    public val c: Float,
+    /** Matrix column 1, row 1 (Y scale / shear). */
+    public val d: Float,
+    /** Vertical blink squash factor (1 = open, ~0.06 = closed). */
+    public val blinkK: Float,
+    /** Eye width in pixels. */
+    public val wPx: Float,
+    /** Eye height in pixels. */
+    public val hPx: Float,
+    /** Alpha (0..1). */
+    public val alpha: Float
 )
 
 /** Notification badge in px. */
-data class NotifBadge(val x: Float, val y: Float, val rPx: Float)
+public data class NotifBadge(
+    /** X position in pixels. */
+    public val x: Float,
+    /** Y position in pixels. */
+    public val y: Float,
+    /** Radius in pixels. */
+    public val rPx: Float
+)
 
 /** Interpolation of two poses; decor cross-fades in opacity, not geometry. */
 private fun blendPose(a: Pose, b: Pose, t: Float): Pose {

@@ -43,12 +43,22 @@ import kotlin.math.sin
 /**
  * Renders the bot mascot using Compose Canvas.
  *
- * @param config Host-owned immutable configuration.
- * @param modifier Layout modifier.
+ * This is the main entry point for displaying the mascot in your UI.
+ * Create a [MascotConfig] with your desired settings and pass it here.
+ *
+ * The bot animates autonomously based on time — no manual frame advancement
+ * needed. State changes are smooth morph transitions.
+ *
+ * @param config Host-owned immutable configuration. See [MascotConfig].
+ * @param modifier Layout modifier for positioning, sizing, etc.
  * @param contentDescription Accessibility label; null omits the semantics node.
+ *                           Provide a description like "Bot mascot" for accessibility.
+ *
+ * @sample com.maxmaster.materialmascot.sample.SampleUsage.ChatWithBot
+ * @sample com.maxmaster.materialmascot.sample.SampleUsage.AccessibleBot
  */
 @Composable
-fun MaterialBot(
+public fun MaterialBot(
     config: MascotConfig,
     modifier: Modifier = Modifier,
     contentDescription: String? = null

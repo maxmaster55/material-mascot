@@ -1,9 +1,3 @@
-/*
- * Material Mascot — a living bot avatar for Android apps.
- * Copyright (C) 2026 Skald contributors
- * SPDX-License-Identifier: GPL-3.0-only
- */
-
 package com.maxmaster.materialmascot.engine
 
 /**
@@ -12,23 +6,35 @@ package com.maxmaster.materialmascot.engine
  * (Happy squints, Listening widens) while the overall look shifts.
  *
  * Dimensions are in ball-radius units, matching Face.EYE_W / EYE_H.
+ *
+ * Use with [MascotConfig.eyeStyle] or pass directly to [BotEngine.sample].
  */
-enum class EyeStyle(val apply: (Float, Float) -> Pair<Float, Float>) {
-    /** The measured reference look: tall capsules. */
+public enum class EyeStyle(val apply: (Float, Float) -> Pair<Float, Float>) {
+    /**
+     * The measured reference look: tall capsules as in the original bloub design.
+     */
     CLASSIC({ w, h -> w to h }),
 
-    /** The grokbots look: eyes scaled way up so the face reads at a glance. */
+    /**
+     * The grokbots look: eyes scaled way up so the face reads at a glance.
+     */
     BIG({ w, h -> (w * 1.55f) to (h * 1.32f) }),
 
-    /** Big and perfectly circular: curious cartoon mascot. */
+    /**
+     * Big and perfectly circular: curious cartoon mascot.
+     */
     ROUND({ w, h ->
         val s = maxOf(w, h) * 1.18f
         s to s
     }),
 
-    /** Beady little dots: understated, slightly mischievous. */
+    /**
+     * Beady little dots: understated, slightly mischievous.
+     */
     DOT({ _, _ -> 0.085f to 0.085f }),
 
-    /** Wide horizontal visor slits: robotic, deadpan. */
+    /**
+     * Wide horizontal visor slits: robotic, deadpan.
+     */
     VIZOR({ w, h -> (w * 1.7f) to (h * 0.45f) })
 }

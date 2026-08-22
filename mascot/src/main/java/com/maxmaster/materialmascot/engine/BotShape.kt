@@ -18,26 +18,29 @@ import kotlin.math.sin
  *
  * Units: radius of the resting ball = 1. theta = 0 points right and grows
  * clockwise on screen (y down), matching canvas coordinates.
+ *
+ * This is an internal data class used by [BotEngine]. Most users will not
+ * interact with this directly.
  */
-class Silhouette(
-    val radii: FloatArray,
-    val rot: Float = 0f,
+internal class Silhouette(
+    public val radii: FloatArray,
+    public val rot: Float = 0f,
     /** center offset, in ball-radius units */
-    val cx: Float = 0f,
-    val cy: Float = 0f,
+    public val cx: Float = 0f,
+    public val cy: Float = 0f,
     /** squash & stretch, applied in screen space (after rotation) */
-    val sx: Float = 1f,
-    val sy: Float = 1f
+    public val sx: Float = 1f,
+    public val sy: Float = 1f
 )
 
-const val PROFILE_SAMPLES = 64
+internal const val PROFILE_SAMPLES = 64
 
 private val ANGLES = FloatArray(PROFILE_SAMPLES) { i -> (i.toFloat() / PROFILE_SAMPLES) * TAU }
 private val COS = FloatArray(PROFILE_SAMPLES) { cos(ANGLES[it]) }
 private val SIN = FloatArray(PROFILE_SAMPLES) { sin(ANGLES[it]) }
 
 /** Perfect circle: neutral base (ball, dot, bubble). */
-fun circle(
+internal fun circle(
     radius: Float,
     cx: Float = 0f,
     cy: Float = 0f,
@@ -50,7 +53,7 @@ fun circle(
  * Egg silhouette, measured off the reference video (footprint 1.647 x 2.000
  * ball-radius): same height as the resting ball, narrower across.
  */
-fun eggProfile(): FloatArray = floatArrayOf(
+internal fun eggProfile(): FloatArray = floatArrayOf(
     0.8369f, 0.8424f, 0.8497f, 0.8585f, 0.8674f, 0.8775f, 0.8878f, 0.8983f,
     0.9089f, 0.9185f, 0.9288f, 0.9374f, 0.9445f, 0.9504f, 0.9543f, 0.9559f,
     0.9555f, 0.9519f, 0.9466f, 0.9389f, 0.9302f, 0.9193f, 0.9085f, 0.8969f,
@@ -65,7 +68,7 @@ fun eggProfile(): FloatArray = floatArrayOf(
  * Triangle pointing up with heavily rounded corners (measured off bloub's
  * "play" state, frame 190, footprint 1.995 x 1.884 ball-radius).
  */
-fun triangleProfile(): FloatArray = floatArrayOf(
+internal fun triangleProfile(): FloatArray = floatArrayOf(
     0.7819f, 0.8211f, 0.8747f, 0.9440f, 1.0223f, 1.0960f, 1.1401f, 1.1340f,
     1.0808f, 1.0047f, 0.9265f, 0.8603f, 0.8104f, 0.7730f, 0.7450f, 0.7273f,
     0.7151f, 0.7118f, 0.7148f, 0.7245f, 0.7427f, 0.7680f, 0.8037f, 0.8518f,
@@ -77,7 +80,7 @@ fun triangleProfile(): FloatArray = floatArrayOf(
 )
 
 /** Hexagon pointing up, very rounded corners (measured, footprint 1.826 x 2.011). */
-fun hexagonProfile(): FloatArray = floatArrayOf(
+internal fun hexagonProfile(): FloatArray = floatArrayOf(
     0.9210f, 0.9282f, 0.9441f, 0.9706f, 0.9984f, 1.0059f, 0.9896f, 0.9562f,
     0.9290f, 0.9124f, 0.9047f, 0.9058f, 0.9157f, 0.9349f, 0.9642f, 0.9873f,
     0.9882f, 0.9665f, 0.9336f, 0.9105f, 0.8968f, 0.8918f, 0.8955f, 0.9080f,
@@ -91,7 +94,7 @@ fun hexagonProfile(): FloatArray = floatArrayOf(
 /**
  * Convex hull of two circles as a point polygon: the tapered bar of the "!".
  */
-fun hullOfCirclesPoints(
+internal fun hullOfCirclesPoints(
     x1: Float, y1: Float, r1: Float,
     x2: Float, y2: Float, r2v: Float,
     steps: Int = 96
@@ -120,7 +123,7 @@ fun hullOfCirclesPoints(
  * Radial profile of a convex hull of two circles, ray-cast from (cx, cy).
  * Used for the tapered bar of the "!" glyphs. Computed once, never per frame.
  */
-fun profileFromHullOfCircles(
+internal fun profileFromHullOfCircles(
     x1: Float, y1: Float, r1: Float,
     x2: Float, y2: Float, r2v: Float,
     cx: Float = 0f,
@@ -133,7 +136,7 @@ fun profileFromHullOfCircles(
  * Arbitrary polygon -> radial profile, by ray casting from [center].
  * Used for shapes that do not express naturally as r(theta).
  */
-fun profileFromPolygon(poly: Array<Offset>, cx: Float, cy: Float): FloatArray {
+internal fun profileFromPolygon(poly: Array<Offset>, cx: Float, cy: Float): FloatArray {
     val radii = FloatArray(PROFILE_SAMPLES)
     val n = poly.size
     for (k in 0 until PROFILE_SAMPLES) {
@@ -161,7 +164,7 @@ fun profileFromPolygon(poly: Array<Offset>, cx: Float, cy: Float): FloatArray {
 private fun abs(v: Float): Float = if (v < 0f) -v else v
 
 /** Radius of a profile in an arbitrary direction, interpolated between neighbors. */
-fun radiusAtAngle(radii: FloatArray, angle: Float): Float {
+internal fun radiusAtAngle(radii: FloatArray, angle: Float): Float {
     val n = radii.size
     val t = ((((angle / TAU) % 1f) + 1f) % 1f) * n
     val i = t.toInt()
@@ -169,7 +172,7 @@ fun radiusAtAngle(radii: FloatArray, angle: Float): Float {
 }
 
 /** Interpolation of two silhouettes; allocates a fresh result. */
-fun blend(a: Silhouette, b: Silhouette, t: Float): Silhouette {
+internal fun blend(a: Silhouette, b: Silhouette, t: Float): Silhouette {
     val radii = FloatArray(PROFILE_SAMPLES) { i -> lerp(a.radii[i], b.radii[i], t) }
     // Shortest-path rotation: avoid a full turn when going e.g. +170deg -> -170deg.
     var dRot = b.rot - a.rot
@@ -186,7 +189,7 @@ fun blend(a: Silhouette, b: Silhouette, t: Float): Silhouette {
 }
 
 /** Projects the silhouette to screen points; [scale] = ball radius in px. */
-fun toPoints(s: Silhouette, scale: Float, out: MutableList<Offset>) {
+internal fun toPoints(s: Silhouette, scale: Float, out: MutableList<Offset>) {
     out.clear()
     val cr = cos(s.rot)
     val sr = sin(s.rot)

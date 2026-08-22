@@ -1,7 +1,7 @@
 /*
  * Material Mascot — a living bot avatar for Android apps.
  * Copyright (C) 2026 Skald contributors
- * SPDX-License-Identifier: GPL-3.0-only
+ * SPDX-License-Identifier: MIT
  */
 
 package com.maxmaster.materialmascot.live
@@ -18,18 +18,23 @@ import androidx.compose.runtime.staticCompositionLocalOf
  * Backed by snapshot state so every reader (floating hosts, scaffolds)
  * recomposes the exact frame the final claim changes.
  */
-object BotStage {
+public object BotStage {
     /** Opaque ownership token returned by [enter]. */
-    class Claim internal constructor()
+    public class Claim public constructor()
 
     private val activeClaims = mutableSetOf<Claim>()
 
-    var bigCompanionOnStage: Boolean by mutableStateOf(false)
+    /** True while any screen has claimed the big companion slot. */
+    public var bigCompanionOnStage: Boolean by mutableStateOf(false)
         private set
 
-    /** Claims the stage until this exact token is passed to [exit]. */
+    /**
+     * Claims the stage until this exact token is passed to [exit].
+     *
+     * @return A [Claim] token that must be passed to [exit] to release the stage.
+     */
     @Synchronized
-    fun enter(): Claim {
+    public fun enter(): Claim {
         val claim = Claim()
         activeClaims += claim
         bigCompanionOnStage = true
@@ -41,7 +46,7 @@ object BotStage {
      * never affects another owner that is still on stage.
      */
     @Synchronized
-    fun exit(claim: Claim) {
+    public fun exit(claim: Claim) {
         if (activeClaims.remove(claim)) {
             bigCompanionOnStage = activeClaims.isNotEmpty()
         }
@@ -52,7 +57,7 @@ object BotStage {
  * The process-wide [MascotStatusBus], provided once at the app root.
  * Every [LiveBot] reads its mood from here.
  */
-val LocalMascotStatus = staticCompositionLocalOf<MascotStatusBus?> { null }
+public val LocalMascotStatus = staticCompositionLocalOf<MascotStatusBus?> { null }
 
 /** Provided at the activity root; null where the shake feature is not installed. */
-val LocalShakeDizzy = staticCompositionLocalOf<ShakeDizzyController?> { null }
+public val LocalShakeDizzy = staticCompositionLocalOf<ShakeDizzyController?> { null }
