@@ -162,6 +162,125 @@ fun blinkLid(t: Float): Float {
     return 1f
 }
 
+/**
+ * Saccades: real eyes never drift smoothly, they HOLD a fixation then JUMP to
+ * the next one in a few hundredths of a second (Disney's "moving hold", and
+ * the reason game idles feel alive where pure noise feels drugged). Layered on
+ * top of the measured drift: the drift keeps the organic wobble, the saccade
+ * layer adds the fixation jumps.
+ *
+ * Pre-drawn calendar, deterministic like [BLINKS]: each entry is
+ * `[startTimeSec, yawTargetDeg, pitchTargetDeg]`. The transition to a new
+ * target takes [SACCADE_ATTACK]; between attacks the value is HELD flat.
+ */
+private const val SACCADE_ATTACK = 0.07f
+
+private val SACCADES: FloatArray = run {
+    val rng = Mulberry32(0x5accad)
+    val out = ArrayList<Float>()
+    var t = 0.9f
+    while (t < 3600f) {
+        // one jump every 0.7 to 3.1 s, occasionally clustered (reading rhythm)
+        out.addAll(listOf(t, rng() * 7f - 3.5f, rng() * 4f - 2f))
+        t += 0.7f + rng() * 2.4f
+    }
+    out.toFloatArray()
+}
+
+/** Smooth 0->1 ramp with zero-slope ends; the cheapest non-jarring attack. */
+private fun smooth(x: Float): Float {
+    val c = x.coerceIn(0f, 1f)
+    return c * c * (3f - 2f * c)
+}
+
+/** Current saccade offset (yaw, pitch) in degrees, held flat between jumps. */
+fun saccadeOffset(t: Float): Pair<Float, Float> {
+    var prevY = 0f
+    var prevP = 0f
+    var i = 0
+    while (i + 2 < SACCADES.size && SACCADES[i] <= t) {
+        // next event's start; MAX_VALUE after the last one (calendar exhausted)
+        val nextStart = if (i + 3 < SACCADES.size) SACCADES[i + 3] else Float.MAX_VALUE
+        if (t < nextStart) {
+            // inside this fixation: attack from the previous target, then hold
+            val k = smooth((t - SACCADES[i]) / SACCADE_ATTACK)
+            return (prevY + (SACCADES[i + 1] - prevY) * k) to
+                (prevP + (SACCADES[i + 2] - prevP) * k)
+        }
+        prevY = SACCADES[i + 1]
+        prevP = SACCADES[i + 2]
+        i += 3
+    }
+    return prevY to prevP
+}
+
+/**
+ * Curious glances: rare, larger excursions — something caught the bot's
+ * attention off-screen, it looks, holds, comes back. This is what makes a
+ * rest pose read as ATTENDING rather than IDLING. Envelope is a symmetric
+ * trapezoid (rise 0.45 s, hold, fall 0.45 s) so it lands and leaves softly.
+ */
+private val GLANCES: FloatArray = run {
+    val rng = Mulberry32(0x61a7ce)
+    val out = ArrayList<Float>()
+    var t = 11f
+    while (t < 3600f) {
+        val yaw = (if (rng() < 0.5f) -1f else 1f) * (4.5f + rng() * 3f)
+        val pitch = rng() * 10f - 5f
+        val hold = 0.9f + rng() * 0.7f
+        out.addAll(listOf(t, yaw, pitch, 0.45f + hold + 0.45f))
+        t += 14f + rng() * 20f
+    }
+    out.toFloatArray()
+}
+
+/** Current glance offset (yaw, pitch) in degrees, trapezoid-enveloped. */
+fun glanceOffset(t: Float): Pair<Float, Float> {
+    var i = 0
+    while (i + 3 < GLANCES.size && GLANCES[i] <= t) {
+        val u = t - GLANCES[i]
+        val total = GLANCES[i + 3]
+        if (u <= total) {
+            val env = minOf(smooth(u / 0.45f), smooth((total - u) / 0.45f))
+            return (GLANCES[i + 1] * env) to (GLANCES[i + 2] * env)
+        }
+        i += 4
+    }
+    return 0f to 0f
+}
+
+/**
+ * Squint moods: rare half-lidded moments (skepticism, drowsy comfort). Held
+ * long enough to read as a mood, not a glitch; always combined WITH blinks,
+ * never replacing them. Returns a lid MULTIPLIER in [0.35, 1].
+ */
+private val SQUINTS: FloatArray = run {
+    val rng = Mulberry32(0x5a117)
+    val out = ArrayList<Float>()
+    var t = 7f
+    while (t < 3600f) {
+        val hold = 0.5f + rng() * 0.5f
+        val depth = 0.45f + rng() * 0.12f
+        out.addAll(listOf(t, 0.15f + hold + 0.15f, depth))
+        t += 9f + rng() * 17f
+    }
+    out.toFloatArray()
+}
+
+fun squintLid(t: Float): Float {
+    var i = 0
+    while (i + 2 < SQUINTS.size && SQUINTS[i] <= t) {
+        val u = t - SQUINTS[i]
+        val total = SQUINTS[i + 1]
+        if (u <= total) {
+            val env = minOf(smooth(u / 0.15f), smooth((total - u) / 0.15f))
+            return 1f + (SQUINTS[i + 2] - 1f) * env
+        }
+        i += 3
+    }
+    return 1f
+}
+
 fun liveliness(
     t: Float,
     wander: Float = 1f,
@@ -172,17 +291,34 @@ fun liveliness(
     // Energy > 1 shortens every period and widens every amplitude, turning the
     // measured calm of the reference video into a cheerful, active character.
     val e = if (energy.isFinite()) energy.coerceIn(0.5f, 2.5f) else 1f
+    // The ADDED behaviour layers get a gentler amplitude ramp than the drift:
+    // at WILD they must spice up the idle, not park the outer eye behind the
+    // limb of the sphere.
+    val amp = 0.6f + 0.4f * e
+    // Schedules run on the same inner clock as blinks (t * e).
+    val ts = t * e
+    val (sacYaw, sacPitch) = saccadeOffset(ts)
+    val (glanceYaw, glancePitch) = glanceOffset(ts)
     return Liveliness(
-        dYaw = (loopNoise(t, 11.3f / e, 0.4f) * 5.5f + loopNoise(t, 3.7f / e, 2.1f) * 1.6f) * wander * e,
-        dPitch = (loopNoise(t, 9.1f / e, 1.3f) * 4.2f + loopNoise(t, 4.3f / e, 0.7f) * 1.3f) * wander * e,
+        dYaw = (loopNoise(t, 11.3f / e, 0.4f) * 5.5f + loopNoise(t, 3.7f / e, 2.1f) * 1.6f) *
+            wander * e + (sacYaw + glanceYaw) * wander * amp,
+        dPitch = (loopNoise(t, 9.1f / e, 1.3f) * 4.2f + loopNoise(t, 4.3f / e, 0.7f) * 1.3f) *
+            wander * e + (sacPitch + glancePitch) * wander * amp,
         dRoll = loopNoise(t, 13.7f / e, 3.2f) * 2.2f * wander * e,
-        lid = if (blink) blinkLid(t * e) else 1f,
+        lid = if (blink) minOf(blinkLid(ts), squintLid(ts)) else 1f,
         // At rest the video is nearly motionless (center stable +-0.003):
         // all the life goes through gaze and blinking.
         driftX = if (float) loopNoise(t, 7.9f / e, 1.9f) * (0.006f * e) else 0f,
         driftY = if (float) loopNoise(t, 5.3f / e, 0.3f) * (0.007f * e) else 0f,
-        // Width stays constant, only height breathes.
-        breath = if (float) 1f + kotlin.math.sin((t / (3.4f / e)) * TAU) * (0.005f * e) else 1f
+        // Width stays constant, only height breathes. The depth is itself
+        // modulated by a slow noise so inhales never metronome.
+        breath =
+        if (float) {
+            1f + kotlin.math.sin((t / (3.4f / e)) * TAU) *
+                (0.005f * e * (1f + 0.45f * loopNoise(t, 17f / e, 5.5f)))
+        } else {
+            1f
+        }
     )
 }
 
