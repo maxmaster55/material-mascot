@@ -5,8 +5,10 @@ plugins {
     id("maven-publish")
 }
 
-group = "com.maxmaster.materialmascot"
-version = "1.0.0"
+// Coordinates are single-sourced from gradle.properties so consumers of the
+// build logic and the published artifacts always agree.
+group = providers.gradleProperty("library.group").get()
+version = providers.gradleProperty("library.version").get()
 
 android {
     namespace = "com.maxmaster.materialmascot"
@@ -53,12 +55,17 @@ dependencies {
 publishing {
     publications {
         register<MavenPublication>("release") {
+            artifactId = providers.gradleProperty("library.artifactId").get()
             afterEvaluate { from(components["release"]) }
 
             pom {
                 name.set("Material Mascot")
-                description.set("A living bot avatar for Android/Jetpack Compose — a faithful Kotlin/Canvas port of bloub, the MIT-licensed SVG recreation of the x.ai Grok avatar. Everything is drawn at runtime — no image assets.")
-                url.set("https://github.com/maxmaster/material-mascot")
+                description.set(
+                    "A living bot avatar for Android/Jetpack Compose — a faithful " +
+                        "Kotlin/Canvas port of bloub, the MIT-licensed SVG recreation of " +
+                        "the x.ai Grok avatar. Everything is drawn at runtime — no image assets."
+                )
+                url.set(providers.gradleProperty("publish.url").get())
 
                 licenses {
                     license {
@@ -69,16 +76,16 @@ publishing {
 
                 developers {
                     developer {
-                        id.set("maxmaster")
-                        name.set("Max Master")
-                        email.set("maxmaster@example.com")
+                        id.set(providers.gradleProperty("publish.developer.id").get())
+                        name.set(providers.gradleProperty("publish.developer.name").get())
+                        email.set(providers.gradleProperty("publish.developer.email").get())
                     }
                 }
 
                 scm {
                     connection.set("scm:git:git://github.com/maxmaster/material-mascot.git")
                     developerConnection.set("scm:git:ssh://github.com/maxmaster/material-mascot.git")
-                    url.set("https://github.com/maxmaster/material-mascot")
+                    url.set(providers.gradleProperty("publish.url").get())
                 }
             }
         }
