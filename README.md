@@ -1,6 +1,5 @@
 # Material Mascot
 
-[![Maven Central](https://img.shields.io/maven-central/v/com.maxmaster.materialmascot/mascot)](https://central.sonatype.com/artifact/com.maxmaster.materialmascot/mascot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![API](https://img.shields.io/badge/API-26%2B-brightgreen.svg)](https://android-arsenal.com/api?level=26)
 
@@ -8,38 +7,55 @@ A living bot avatar for Android / Jetpack Compose — a faithful Kotlin/Canvas p
 
 ## Features
 
-- **Zero assets**: Single filled silhouette, 64-point radial profiles, capsule eyes on a sphere
+- **Zero assets**: single filled silhouette, 64-point radial profiles, capsule eyes on a sphere
 - **20+ emotional states**: Idle, Listening, Thinking, Working, Responding, Alert, Happy, Confused, Sleepy, Notify, Narrating, Sad, Love, Silly, Egg, Hexagon, Play, Burst, Comet, Exclaim, Orbit, Swirl
-- **Deterministic animation**: Pure function of time — pause, resume, seek, and slow-mo all produce identical frames
-- **Life at rest**: Gaze drift, saccades, glances, blinks, micro-fidgets — all pre-computed calendars
-- **Exponential transitions**: `easeOutQuint` morphs with no body overshoot; chained transitions stay continuous
-- **5 eye personalities**: Classic, Big, Round, Dot, Vizor — applied as a transform so expressions keep character
-- **Accessibility first**: `motion = false` kills decorative motion but keeps blinking (WCAG reduced-motion)
-- **Tap interaction**: Tap the bot → it winks at you (Happy state for 1.1s)
+- **Deterministic animation**: pure function of time — pause, resume, seek and slow-mo produce identical frames
+- **Life at rest**: gaze drift, saccades, glances, blinks, micro-fidgets
+- **5 eye personalities**: Classic, Big, Round, Dot, Vizor — applied as a transform so expressions keep their character
+- **Living-companion mode**: app-wide mood bus, shake-to-dizzy sensor reaction, single big-companion stage claim (`live` package, first-class public API)
+- **Accessibility first**: `motion = false` kills decorative motion but keeps blinking/breathing essentials (WCAG reduced-motion)
+- **Tap interaction**: tap the bot → it winks at you (Happy state for ~1.1 s)
 
-## Gradle Setup
+## Requirements
 
-### Using Version Catalog (recommended)
+| | |
+|---|---|
+| Min SDK | 26 |
+| Compile SDK | 36 |
+| Kotlin | 2.2.0+ |
+| Compose (BOM era) | Foundation/UI 1.9+, Material3 |
 
-In your `settings.gradle.kts`:
+## Setup
+
+Coordinates: `com.maxmaster.materialmascot:mascot:1.0.0`
+
+Until the artifact is on a remote repository, publish it locally once and consume it via `mavenLocal()`:
+
+```bash
+git clone https://github.com/maxmaster/material-mascot.git
+cd material-mascot
+./gradlew :mascot:publishToMavenLocal
+```
 
 ```kotlin
+// settings.gradle.kts
 dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // Add your maven repository if not on Maven Central yet
-        maven { url = uri("https://your-maven-repo.com") }
-    }
-    versionCatalogs {
-        create("libs") {
-            fromFiles(files("gradle/libs.versions.toml"))
-        }
+        mavenLocal()          // picks up com.maxmaster.materialmascot:mascot
     }
 }
 ```
 
-In your `gradle/libs.versions.toml`:
+```kotlin
+// build.gradle.kts
+dependencies {
+    implementation("com.maxmaster.materialmascot:mascot:1.0.0")
+}
+```
+
+Or via version catalog (`gradle/libs.versions.toml`):
 
 ```toml
 [versions]
@@ -49,32 +65,13 @@ materialMascot = "1.0.0"
 material-mascot = { module = "com.maxmaster.materialmascot:mascot", version.ref = "materialMascot" }
 ```
 
-In your module's `build.gradle.kts`:
-
-```kotlin
-dependencies {
-    implementation(libs.material.mascot)
-}
-```
-
-### Direct Dependency
-
-```kotlin
-dependencies {
-    implementation("com.maxmaster.materialmascot:mascot:1.0.0")
-}
-```
-
-Requires:
-- `minSdk 26+`
-- `compileSdk 36+`
-- Kotlin 2.2.0+
-- Compose Compiler 2.2.0+
-
 ## Quick Start
+
+The simplest entry point is [`MaterialBot`](mascot/src/main/java/com/maxmaster/materialmascot/ui/MaterialBot.kt): give it a `MascotConfig`, get an autonomously animating bot.
 
 ```kotlin
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.maxmaster.materialmascot.config.MascotConfig
@@ -83,25 +80,9 @@ import com.maxmaster.materialmascot.ui.MaterialBot
 
 @Composable
 fun MyBot() {
-    MaterialBot(
-        config = MascotConfig(
-            state = BotState.Thinking,
-            color = Color(0xFF0A0A0C),   // bloub 'encre' ink
-            size = 64.dp
-        ),
-        contentDescription = "Bot mascot thinking"
-    )
-}
-```
-
-### With State Transitions
-
-```kotlin
-@Composable
-fun ChatBot() {
     var botState by remember { mutableStateOf(BotState.Idle) }
 
-    // Simulate: listening → thinking → responding → happy → idle
+    // listening → thinking → responding → happy → idle
     LaunchedEffect(Unit) {
         while (true) {
             delay(2000); botState = BotState.Listening
@@ -115,7 +96,7 @@ fun ChatBot() {
     MaterialBot(
         config = MascotConfig(
             state = botState,
-            color = MaterialTheme.colorScheme.primary,
+            color = Color(0xFF0A0A0C),   // bloub 'encre' ink
             size = 120.dp
         ),
         contentDescription = "Chat companion"
@@ -123,60 +104,134 @@ fun ChatBot() {
 }
 ```
 
+## The Living Companion: LiveBot
+
+[`LiveBot`](mascot/src/main/java/com/maxmaster/materialmascot/live/LiveBot.kt) wraps `MaterialBot` and adds app-wide life: exactly one place decides what the bot feels.
+
+1. A hard shake always wins → Silly face + wobble.
+2. An explicit `state` parameter overrides everything else.
+3. Otherwise the shared **status bus** drives the mood — one `begin()` call moves *every* `LiveBot` on screen at once.
+
+Install once at your activity root:
+
+```kotlin
+import com.maxmaster.materialmascot.live.*
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            // One controller per activity; buzz respects your own setting.
+            val shakeBuzzEnabled = remember { mutableStateOf(true) }
+            val shakeDizzy = remember {
+                ShakeDizzyController(this, vibrationEnabled = { shakeBuzzEnabled.value })
+            }
+            ShakeDizzyEffect(shakeDizzy)
+
+            val statusBus = remember { MascotStatusBus() }
+
+            CompositionLocalProvider(
+                LocalShakeDizzy provides shakeDizzy,
+                LocalMascotStatus provides statusBus,
+            ) {
+                App()
+            }
+        }
+    }
+}
+```
+
+Then render bots anywhere below that point:
+
+```kotlin
+LiveBot(
+    config = MascotConfig(size = 96.dp),
+    modifier = Modifier.align(Alignment.BottomEnd),
+    contentDescription = "Companion"
+)
+```
+
+Report real work through the bus and every visible companion reacts:
+
+```kotlin
+val token = statusBus.begin("chat")   // all bots start Working
+try {
+    sendMessage()
+    statusBus.success(token)          // transient Happy, then back to Idle
+} catch (t: Throwable) {
+    statusBus.error(token)            // transient Alert
+}
+
+// Long-running ops escalate automatically: WORKING → SLOW after 10 s.
+```
+
+Both composition locals are nullable by design: where they're not provided, `LiveBot` degrades gracefully (no wobble, static config state).
+
+### One Big Companion: BotStage
+
+Screens that show their own large bot can claim the "big companion" slot so floating hosts and scaffolds hide their duplicate companion while the big one is visible:
+
+```kotlin
+import com.maxmaster.materialmascot.live.BotStage
+
+@Composable
+fun ChatScreen(bigBot: @Composable () -> Unit) {
+    DisposableEffect(Unit) {
+        val claim = BotStage.enter()
+        onDispose { BotStage.exit(claim) }   // overlapping claims are ref-counted
+    }
+    if (BotStage.bigCompanionOnStage) bigBot()   // snapshot-backed: recomposes same frame
+}
+```
+
+### Custom Renderers
+
+Rendering `MaterialBot` yourself? You still get shake reactions à la carte:
+
+```kotlin
+val dizzy = LocalShakeDizzy.current
+MaterialBot(
+    config = MascotConfig(
+        state = if (dizzy != null && dizzy.level.floatValue > DIZZY_FACE_THRESHOLD)
+            BotState.Silly else myState
+    ),
+    modifier = Modifier.dizzyWobble(dizzy, enabled = motionAllowed)
+)
+```
+
 ## Customization
 
-### Shape & Color
+### Color & Shape
+
+Shape is a state: any `BotState` morphs smoothly into any other, including body-shape states.
 
 ```kotlin
 MascotConfig(
-    state = BotState.Happy,
-    color = Color(0xFF2496E8),      // Body color (notify blue)
-    eyeColor = Color.White,          // Eye color
-    size = 120.dp                    // Canvas size
+    state = BotState.Egg,             // also Hexagon, Play (triangle), Burst, Comet…
+    color = Color(0xFF2496E8),        // body fill
+    eyeColor = Color.White,           // eye/dot fill
+    size = 120.dp
 )
 ```
 
 ### Eye Personality
 
 ```kotlin
-import com.maxmaster.materialmascot.engine.EyeStyle
-
-MascotConfig(
-    state = BotState.Idle,
-    eyeStyle = EyeStyle.BIG,       // Large curious eyes
-    // EyeStyle.ROUND   // Circular cartoon eyes
-    // EyeStyle.DOT     // Tiny beady dots
-    // EyeStyle.VIZOR   // Horizontal visor slits
-    // EyeStyle.CLASSIC // Default tall capsules
-)
+MascotConfig(state = BotState.Idle, eyeStyle = EyeStyle.BIG)
+// CLASSIC tall capsules (default) · BIG grokbots look · ROUND cartoon circles
+// DOT beady dots · VIZOR deadpan visor slits
 ```
 
-### Energy Level (Liveliness)
+Eye styles transform whatever the current pose prescribes, so expressions keep their character (Happy squints stay squints).
+
+### Motion & Energy
 
 ```kotlin
 MascotConfig(
-    state = BotState.Idle,
-    energy = 1.0f,   // Calm (reference video)
-    // energy = 1.9f  // Cheerful & active (default)
-    // energy = 2.5f  // Maximum energy
+    energy = 1.0f,   // calm (reference video) … 1.9f default (cheerful) … higher
+    motion = true    // false = WCAG reduced-motion: decorative motion off,
+                     // blink/gaze essentials stay alive
 )
-```
-
-### Reduced Motion (Accessibility)
-
-```kotlin
-import androidx.compose.ui.platform.LocalConfiguration
-
-@Composable
-fun AccessibleBot(state: BotState) {
-    val reducedMotion = LocalConfiguration.current.fontScale > 1.0f // or use system setting
-    MaterialBot(
-        config = MascotConfig(
-            state = state,
-            motion = !reducedMotion  // Disables gaze drift, breathing, float; keeps blink
-        )
-    )
-}
 ```
 
 ### All Configuration Options
@@ -190,7 +245,7 @@ fun AccessibleBot(state: BotState) {
 | `eyeColor` | `Color` | `White` | Eye fill color |
 | `size` | `Dp` | `64.dp` | Canvas size |
 | `motion` | `Boolean` | `true` | Enable decorative motion |
-| `energy` | `Float` | `1.9f` | Liveliness multiplier (0.5–2.5) |
+| `energy` | `Float` | `1.9f` | Liveliness multiplier (~1.0–2.5) |
 | `eyeStyle` | `EyeStyle` | `CLASSIC` | Eye personality |
 
 ## BotState Reference
@@ -199,109 +254,56 @@ fun AccessibleBot(state: BotState) {
 |-------|-------------|-------|----------|
 | `Idle` | Calm breathing ball | 0.32s | 1.7s bob |
 | `Listening` | Wide surprised eyes | 0.38s | Static |
-| `Thinking` | 3 pulsing dots, no face | 0.28s | 2.4s orbit |
-| `Working` | Same as Thinking | 0.28s | 2.4s orbit |
+| `Thinking` | 3 pulsing dots orbiting belly, no face | 0.28s | 2.4s orbit |
+| `Working` | Same animation as Thinking | 0.28s | 2.4s orbit |
 | `Responding` | Lively ball, raised gaze | 0.32s | 0.8s bounce |
-| `Alert` | Tilted "!" + buzz | 0.32s | 2.5Hz vibrate |
+| `Alert` | Stretched ball vibrating at 2.5 Hz | 0.32s | 400ms buzz |
 | `Happy` | Wink | 0.22s | Static |
 | `Confused` | Mismatched mirrored tilts | 0.28s | Static |
-| `Sleepy` | Small bouncing ball + dream bubble | 0.5s | 2.8s breathe |
+| `Sleepy` | Small breathing ball + dream bubble | 0.5s | 2.8s cycle |
 | `Notify` | Round eyes + blue badge pop | 0.35s | Static |
 | `Narrating` | Reading aloud, lowered gaze | 0.32s | 1.1s bob |
-| `Sad` | Droopy mirrored tilts | 0.35s | 3.2s sigh |
+| `Sad` | Droopy mirrored tilts, sigh rhythm | 0.35s | 3.2s cycle |
 | `Love` | Round shining eyes, giddy sway | 0.28s | 1.4s sway |
-| `Silly` | Crossed mismatched tilts | 0.3s | Static |
+| `Silly` | Crossed mismatched tilts, goofball | 0.3s | Static |
 | `Egg` | Egg-shaped body | 0.4s | Static |
 | `Hexagon` | Hexagonal body | 0.4s | Static |
-| `Play` | Tumbling triangle | 0.5s | 3s tumble |
-| `Burst` | Collapse + spiral sparkles | 0.4s | 2.6s cycle |
-| `Comet` | Shrink to dot + trail | 0.45s | 2.4s orbit |
+| `Play` | Tumbling rounded triangle | 0.5s | 3s tumble |
+| `Burst` | Collapse to pebble + spiral sparkles | 0.4s | 2.6s cycle |
+| `Comet` | Shrink to comet dot + trail | 0.45s | 2.4s cycle |
 | `Exclaim` | Upright "!" glyph | 0.45s | Static |
-| `Orbit` | Triangle tumble + rings | 0.6s | 3.4s cycle |
+| `Orbit` | Triangle tumble + concentric rings | 0.6s | 3.4s cycle |
 | `Swirl` | Compressed ring flourish | 0.35s | 1s cycle |
 
-> **Tip**: Use `BotState.fromName("thinking")` for dynamic state lookup (case-insensitive, falls back to `Idle`).
+> Tip: `BotState.fromName("thinking")` does a case-insensitive lookup and falls back to `Idle`.
 
-## Advanced: Custom Status Bus
+## Public API Surface
 
-The library includes an internal `MascotStatusBus` (WORKING → SLOW → SUCCESS/ERROR) used by the internal `LiveBot`. For your own app-wide status system, drive `MascotConfig.state` directly from your ViewModel, repository, or state holder:
+**config/** — `MascotConfig`
+**ui/** — `MaterialBot`
+**engine/** — `BotEngine`, `BotFrame`, `RenderedEye`, `NotifBadge`, `DotSpec`, `NotifSpec`, `ArcSpec`, `BotState` (+22 objects), `EyeStyle`
+**live/** — `LiveBot`, `MascotStatusBus`, `MascotStatus`, `MascotBusState`, `ShakeDizzyController`, `ShakeDizzyEffect`, `dizzyWobble`, `DIZZY_FACE_THRESHOLD`, `BotStage`, `LocalMascotStatus`, `LocalShakeDizzy`
 
-```kotlin
-@Composable
-fun AppBot(viewModel: MyViewModel) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val botState = when (uiState) {
-        is UiState.Loading -> BotState.Thinking
-        is UiState.Success -> BotState.Happy
-        is UiState.Error -> BotState.Alert
-        is UiState.Empty -> BotState.Sleepy
-        else -> BotState.Idle
-    }
-
-    MaterialBot(
-        config = MascotConfig(state = botState, size = 80.dp),
-        contentDescription = "App status"
-    )
-}
-```
-
-## Architecture
-
-```
-com.maxmaster.materialmascot
-├── config/
-│   └── MascotConfig          // Immutable host-owned configuration
-├── engine/
-│   ├── BotEngine             // Pure frame sampler (time → BotFrame)
-│   ├── BotState              // 20+ sealed state objects
-│   ├── EyeStyle              // 5 eye personality enums
-│   ├── BotFrame              // Rendered frame (body, eyes, dots, arcs, badge)
-│   ├── RenderedEye           // Eye ready to draw (affine + blinkK)
-│   ├── BotMath               // Easings, noise, PRNG (internal)
-│   ├── BotShape              // Silhouette, profiles, blending (internal)
-│   ├── BotFace               // Sphere eyes, gaze, life calendars (internal)
-│   └── Arcs                  // Decorative rings (internal)
-├── ui/
-│   └── MaterialBot           // Compose Canvas renderer + tap wink
-├── live/                     // Internal: status bus, shake sensor, stage claiming
-└── sample/                   // Internal: usage examples
-```
-
-**Public API** (stable): `MascotConfig`, `MaterialBot`, `BotState`, `EyeStyle`, `BotEngine`, `BotFrame`, `RenderedEye`, `NotifBadge`, `DotSpec`, `NotifSpec`, `TEAR_POINTS`, `NOTIF_BLUE` constants.
-
-**Internal** (not for consumer use): `LiveBot`, `BotStage`, `MascotStatusBus`, `ShakeDizzyController`, `ShakeDizzyEffect`, `dizzyWobble`, `LocalMascotStatus`, `LocalShakeDizzy`.
+Everything under `engine` that is geometry/math plumbing (`Pose`, `Silhouette`, `Face`, `HeadGaze`, `EyeCfg`, easings, PRNG) is `internal` and not part of the API contract. The `sample` package is `internal` too.
 
 ## ProGuard / R8
 
-The library includes consumer ProGuard rules (`consumer-rules.pro`) that keep the public API. No extra rules needed for typical usage.
-
-If you use R8 full mode and see warnings, add:
-
-```proguard
--keep class com.maxmaster.materialmascot.** { *; }
-```
+Consumer rules ship inside the AAR (`consumer-rules.pro`) and pin only the public API surface — no androidx/coroutines keeps leak into your app. Nothing here uses reflection, so R8 full mode works out of the box.
 
 ## Building Locally
 
 ```bash
-# Run tests
-./gradlew :mascot:testDebugUnitTest
-
-# Build release AAR
-./gradlew :mascot:assembleRelease
-
-# Publish to local Maven
-./gradlew :mascot:publishToMavenLocal
+./gradlew :mascot:testDebugUnitTest     # unit tests
+./gradlew :mascot:assembleRelease       # release AAR -> mascot/build/outputs/aar/
+./gradlew :mascot:publishToMavenLocal   # AAR + POM + sources + javadoc jars
 ```
-
-Output: `mascot/build/outputs/aar/mascot-release.aar`
 
 ## License
 
 ```
 MIT License
 
-Copyright (c) 2026 Skald contributors
+Copyright (c) 2026 Max Master
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
