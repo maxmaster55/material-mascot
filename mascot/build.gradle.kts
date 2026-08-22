@@ -5,10 +5,16 @@ plugins {
     id("maven-publish")
 }
 
-// Coordinates are single-sourced from gradle.properties so consumers of the
-// build logic and the published artifacts always agree.
-group = providers.gradleProperty("library.group").get()
-version = providers.gradleProperty("library.version").get()
+// Coordinates are single-sourced from gradle.properties when present (this
+// repo's own build). Fallbacks keep the module compilable when consumed
+// directly from another build (e.g. settings.gradle projectDir remap), where
+// only the consuming build's gradle.properties is visible.
+private val prop = { key: String, fallback: String ->
+    providers.gradleProperty(key).orElse(fallback).get()
+}
+
+group = prop("library.group", "com.maxmaster.materialmascot")
+version = prop("library.version", "1.0.0")
 
 android {
     namespace = "com.maxmaster.materialmascot"
@@ -55,7 +61,7 @@ dependencies {
 publishing {
     publications {
         register<MavenPublication>("release") {
-            artifactId = providers.gradleProperty("library.artifactId").get()
+            artifactId = prop("library.artifactId", "mascot")
             afterEvaluate { from(components["release"]) }
 
             pom {
@@ -65,7 +71,7 @@ publishing {
                         "Kotlin/Canvas port of bloub, the MIT-licensed SVG recreation of " +
                         "the x.ai Grok avatar. Everything is drawn at runtime — no image assets."
                 )
-                url.set(providers.gradleProperty("publish.url").get())
+                url.set(prop("publish.url", "https://github.com/maxmaster/material-mascot"))
 
                 licenses {
                     license {
@@ -76,16 +82,16 @@ publishing {
 
                 developers {
                     developer {
-                        id.set(providers.gradleProperty("publish.developer.id").get())
-                        name.set(providers.gradleProperty("publish.developer.name").get())
-                        email.set(providers.gradleProperty("publish.developer.email").get())
+                        id.set(prop("publish.developer.id", "maxmaster"))
+                        name.set(prop("publish.developer.name", "Max Master"))
+                        email.set(prop("publish.developer.email", "yousseflkashef000@gmail.com"))
                     }
                 }
 
                 scm {
                     connection.set("scm:git:git://github.com/maxmaster/material-mascot.git")
                     developerConnection.set("scm:git:ssh://github.com/maxmaster/material-mascot.git")
-                    url.set(providers.gradleProperty("publish.url").get())
+                    url.set(prop("publish.url", "https://github.com/maxmaster/material-mascot"))
                 }
             }
         }
