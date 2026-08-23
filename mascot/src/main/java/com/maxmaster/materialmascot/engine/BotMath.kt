@@ -40,6 +40,28 @@ internal object Easings {
         val x = clamp(t)
         return 1f - (1f - x).pow5()
     }
+
+    /**
+     * State-transition curve with a touch of pantomime: a brief ~4% counter-
+     * move toward the origin (anticipation) before the main travel, then a
+     * soft ~3% overshoot past the target and settle on arrival. Endpoints and
+     * continuity match [easeOutQuint] (0 -> 0, 1 -> 1); the excursion beyond
+     * [0, 1] is intentional and small enough that blended decor alphas stay
+     * clamped downstream.
+     */
+    fun easeSettle(t: Float): Float {
+        val x = clamp(t)
+        val ant = 0.14f
+        if (x < ant) {
+            // anticipation: dip back toward the departure pose first
+            return -0.04f * sin((x / ant) * Math.PI.toFloat())
+        }
+        val u = (x - ant) / (1f - ant)
+        val c1 = 0.9f
+        val c3 = c1 + 1f
+        val d = u - 1f
+        return 1f + c3 * d * d * d + c1 * d * d
+    }
 }
 
 private fun Float.pow3(): Float {

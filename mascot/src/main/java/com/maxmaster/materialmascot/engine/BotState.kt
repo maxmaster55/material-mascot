@@ -110,6 +110,12 @@ public val TEAR_POINTS: Array<androidx.compose.ui.geometry.Offset> by lazy {
 
 /* ------------------------------------------------------------ state utils */
 
+/** Smooth 0->1 ramp with zero-slope ends; softens the start of a sweep. */
+private fun smoothStep(x: Float): Float {
+    val c = clamp(x)
+    return c * c * (3f - 2f * c)
+}
+
 /** Three-dot layout of the processing animation, measured off the video. */
 public val DOT_X = floatArrayOf(-0.557f, -0.013f, 0.532f)
 
@@ -177,6 +183,10 @@ private fun dotsPose(t: Float): Pose {
  * - Silly: crossed mismatched tilts, goofball
  * - Egg: egg-shaped body
  * - Hexagon: hexagonal body
+ * - Smile: genuine two-eyed warm smile, body lifted
+ * - Greet: friendly hello hop with a wave flick
+ * - Reading: eyes tracking text lines in slow left-to-right sweeps
+ * - Proud: chest-up settle, warm half-lidded eyes
  *
  * Playful shape morphs (from bloub):
  * - Play: tumbling rounded triangle
@@ -207,16 +217,23 @@ public sealed class BotState(
 
     /**
      * Calm breathing ball with friendly eyes facing the viewer.
-     * Gentle happy bob on top of the rest life.
+     * Gentle happy bob plus a slow breathing swell (a couple of percent of
+     * the radius); the rare micro-saccades of the rest-life layer land on
+     * top, so long idle stretches never read as static.
      */
     public object Idle : BotState(
         name = "idle",
         morphSeconds = 0.32f,
-        posePeriodMs = 1700L,
+        posePeriodMs = 3400L,
         blinkIn = false,
         poseFn = { t ->
+            val breathe = sin(t * (TAU / 3.4f))
             basePose(
-                sil = circle(1f, cy = sin(t * (TAU / 1.7f)) * 0.006f),
+                sil = circle(
+                    1f,
+                    cy = sin(t * (TAU / 1.7f)) * 0.006f,
+                    sy = 1f + breathe * 0.013f
+                ),
                 gaze = HeadGaze(yaw = 0f, pitch = 8f, roll = -8f),
                 w0 = 0.21f, h0 = 0.45f,
                 w1 = 0.21f, h1 = 0.45f
@@ -678,6 +695,136 @@ public sealed class BotState(
         }
     )
 
+    /**
+     * Genuine two-eyed warm smile: both eyes closed as upward-arched dashes
+     * (the mirrored chevron of which [Happy] shows only half — Happy winks),
+     * body lifted slightly off its rest line, breathing up instead of sagging.
+     * The plain "good news" face of the vocabulary.
+     */
+    public object Smile : BotState(
+        name = "smile",
+        morphSeconds = 0.26f,
+        posePeriodMs = 3200L,
+        blinkIn = true,
+        poseFn = { t ->
+            val lift = sin(t * (TAU / 3.2f))
+            basePose(
+                sil = circle(
+                    1f,
+                    cy = -0.008f - 0.005f * lift,
+                    sy = 1.012f
+                ),
+                gaze = HeadGaze(yaw = 0f, pitch = 10f, roll = -6f),
+                split = 16f,
+                w0 = 0.40f, h0 = 0.09f, t0 = 16f,
+                w1 = 0.40f, h1 = 0.09f, t1 = -16f
+            )
+        }
+    )
+
+    /**
+     * Friendly hello: the ball leans in with a gentle side sway and does
+     * small bouncy hops while a flick of dots travels along an arc off the
+     * upper-right shoulder — reads as a waving hand. Bright open eyes pitched
+     * up at the viewer.
+     */
+    public object Greet : BotState(
+        name = "greet",
+        morphSeconds = 0.34f,
+        posePeriodMs = 2600L,
+        blinkIn = true,
+        poseFn = { t ->
+            val hop = kotlin.math.abs(kotlin.math.sin(t * (TAU / 1.3f)))
+            val lean = sin(t * (TAU / 2.6f))
+            // Three staggered specks sweeping up the shoulder arc = the wave.
+            val wave = (0..2).map { i ->
+                val p = (t / 1.3f + i * 0.16f) % 1f
+                val env = kotlin.math.sin(p * PI.toFloat())
+                val ang = (-25f - 55f * p) * PI.toFloat() / 180f
+                DotSpec(
+                    x = cos(ang) * 1.06f,
+                    y = sin(ang) * 1.06f,
+                    r = 0.045f + 0.018f * env,
+                    alpha = env * 0.85f
+                )
+            }
+            basePose(
+                sil = circle(
+                    1f + 0.012f * hop,
+                    cx = 0.012f * lean,
+                    cy = -0.05f * hop,
+                    rot = 0.07f * lean
+                ),
+                gaze = HeadGaze(yaw = -8f, pitch = 12f, roll = -10f + lean * 30f),
+                split = 16f,
+                w0 = 0.22f, h0 = 0.47f,
+                w1 = 0.22f, h1 = 0.47f,
+                dots = wave
+            )
+        }
+    )
+
+    /**
+     * Reading: eyes lowered toward content, tracking left-to-right in slow
+     * sweeps with a quick soft return (the line wrap), plus a tiny nod on the
+     * return. The signature state for a reading app.
+     */
+    public object Reading : BotState(
+        name = "reading",
+        morphSeconds = 0.32f,
+        posePeriodMs = 2600L,
+        blinkIn = true,
+        poseFn = { t ->
+            val amp = 15f
+            val p = (t % 2.6f) / 2.6f
+            val sweep: Float
+            val dip: Float
+            if (p < 0.76f) {
+                // slow eased traverse of the line
+                sweep = -amp + 2f * amp * smoothStep(p / 0.76f)
+                dip = 0f
+            } else {
+                // soft return to the left edge, head nods along
+                val u = (p - 0.76f) / 0.24f
+                sweep = amp - 2f * amp * Easings.easeInOutCubic(u)
+                dip = kotlin.math.sin(u * PI.toFloat()) * 4f
+            }
+            basePose(
+                gaze = HeadGaze(yaw = sweep, pitch = -20f - dip, roll = -4f),
+                split = 15f,
+                w0 = 0.20f, h0 = 0.30f, t0 = 6f,
+                w1 = 0.20f, h1 = 0.30f, t1 = -6f
+            )
+        }
+    )
+
+    /**
+     * Proud: chest-up settle after finishing something long. A slow one-shot
+     * rise out of a small sunken start (the exhale), then it holds there,
+     * breathing; eyes are wide-set, squat and warm — contented half-lids.
+     */
+    public object Proud : BotState(
+        name = "proud",
+        morphSeconds = 0.6f,
+        posePeriodMs = 3600L,
+        blinkIn = true,
+        poseFn = { t ->
+            val rise = Easings.easeOutCubic(clamp(t / 1.2f))
+            val breathe = sin(t * (TAU / 3.6f))
+            basePose(
+                sil = circle(
+                    0.97f + 0.03f * rise,
+                    sy = 0.985f + 0.02f * rise + 0.008f * breathe,
+                    cy = 0.012f - 0.03f * rise + 0.005f * breathe
+                ),
+                gaze = HeadGaze(yaw = 0f, pitch = 4f + 8f * rise, roll = -6f),
+                split = 15f,
+                w0 = 0.27f, h0 = 0.24f,
+                w1 = 0.27f, h1 = 0.24f
+            )
+        }
+    )
+
     companion object {
         // Lazy so the registry never builds during the sealed class's own
         // initialization window.
@@ -686,7 +833,8 @@ public sealed class BotState(
             listOf(
                 Idle, Listening, Thinking, Responding, Alert, Happy, Confused,
                 Sleepy, Notify, Working, Narrating, Sad, Love, Silly, Egg,
-                Hexagon, Play, Burst, Comet, Exclaim, Orbit, Swirl
+                Hexagon, Play, Burst, Comet, Exclaim, Orbit, Swirl,
+                Smile, Greet, Reading, Proud
             )
         }
 

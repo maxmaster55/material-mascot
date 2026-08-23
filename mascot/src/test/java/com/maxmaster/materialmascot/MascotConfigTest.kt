@@ -48,7 +48,8 @@ class MascotConfigTest {
             BotState.Notify, BotState.Working, BotState.Narrating, BotState.Sad,
             BotState.Love, BotState.Silly, BotState.Egg, BotState.Hexagon,
             BotState.Play, BotState.Burst, BotState.Comet, BotState.Exclaim,
-            BotState.Orbit, BotState.Swirl
+            BotState.Orbit, BotState.Swirl,
+            BotState.Smile, BotState.Greet, BotState.Reading, BotState.Proud
         )
         assertEquals(expected, BotState.all)
     }

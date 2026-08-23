@@ -161,30 +161,39 @@ internal data class Liveliness(
     public val breath: Float
 )
 
-/** Pre-drawn blink calendar: deterministic and stateless. */
-internal val BLINKS: FloatArray = run {
+private val BLINK_SCHEDULE: Pair<FloatArray, FloatArray> = run {
     val rng = Mulberry32(0x5eed)
-    val out = ArrayList<Float>()
+    val starts = ArrayList<Float>()
+    val durs = ArrayList<Float>()
     var t = 1.4f
     while (t < 900f) {
-        out.add(t)
+        starts.add(t)
+        durs.add(0.15f + rng() * 0.07f)
         // 1.9 to 4.6 s between blinks, sometimes a double blink
         t += 1.9f + rng() * 2.7f
-        if (rng() < 0.18f) {
-            out.add(t)
+        if (rng() < 0.24f) {
+            starts.add(t)
+            durs.add(0.12f + rng() * 0.05f)
             t += 0.24f
         }
     }
-    out.toFloatArray()
+    starts.toFloatArray() to durs.toFloatArray()
 }
 
-/** Measured: 1 to 2 frames at 10 fps. */
+/** Pre-drawn blink calendar: deterministic and stateless. */
+internal val BLINKS: FloatArray = BLINK_SCHEDULE.first
+
+/** Per-blink close duration (s): no two blinks share an exact length. */
+internal val BLINK_DURS: FloatArray = BLINK_SCHEDULE.second
+
+/** Measured: 1 to 2 frames at 10 fps; kept as the reference duration. */
 internal const val BLINK_DUR = 0.18f
 
 internal fun blinkLid(t: Float): Float {
-    for (start in BLINKS) {
+    for (i in BLINKS.indices) {
+        val start = BLINKS[i]
         if (t < start) break
-        val k = (t - start) / BLINK_DUR
+        val k = (t - start) / BLINK_DURS[i]
         if (k >= 0f && k <= 1f) {
             // fast close, slightly slower reopen
             return if (k < 0.45f) 1f - k / 0.45f else (k - 0.45f) / 0.55f

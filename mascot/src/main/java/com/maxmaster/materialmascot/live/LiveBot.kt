@@ -40,7 +40,8 @@ public fun LiveBot(
     config: MascotConfig,
     modifier: Modifier = Modifier,
     state: BotState? = null,
-    contentDescription: String? = null
+    contentDescription: String? = null,
+    onClick: (() -> Unit)? = null
 ) {
     // App-wide operations speak through the status bus; screens may shout
     // over it with an explicit state, but nobody escapes being dizzy.
@@ -70,6 +71,7 @@ public fun LiveBot(
             state = shown,
             size = config.size
         ),
-        contentDescription = contentDescription
+        contentDescription = contentDescription,
+        onClick = onClick
     )
 }

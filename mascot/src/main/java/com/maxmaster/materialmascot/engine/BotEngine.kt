@@ -84,7 +84,7 @@ public class BotEngine(
         val pose = cur.poseFn(since.coerceAtLeast(0.0).toFloat())
         if (since >= cur.morphSeconds) return pose
         val originPose = origin(now) ?: return pose
-        return blendPose(originPose, pose, Easings.easeOutQuint((since / cur.morphSeconds).toFloat()))
+        return blendPose(originPose, pose, Easings.easeSettle((since / cur.morphSeconds).toFloat()))
     }
 
     /**
@@ -118,7 +118,9 @@ public class BotEngine(
         if (since < cur.morphSeconds) {
             origin(now)?.let { o ->
                 // Ease-out measured on the video: no body overshoot.
-                val ratio = Easings.easeOutQuint((since / cur.morphSeconds).toFloat())
+                // Settle curve: anticipation dip, then a soft overshoot-and-
+                // settle instead of the flat measured slide.
+                val ratio = Easings.easeSettle((since / cur.morphSeconds).toFloat())
                 pose = blendPose(o, pose, ratio)
             }
         }
@@ -303,7 +305,7 @@ private fun blendPose(a: Pose, b: Pose, t: Float): Pose {
         split = lerp(a.split, b.split, t),
         eye0 = lerpEye(a.eye0, b.eye0, t),
         eye1 = lerpEye(a.eye1, b.eye1, t),
-        eyeAlpha = lerp(a.eyeAlpha, b.eyeAlpha, t),
+        eyeAlpha = lerp(a.eyeAlpha, b.eyeAlpha, t).coerceIn(0f, 1f),
         dots = dots,
         arcs = arcs,
         notif = if (t < 0.5f) a.notif else b.notif

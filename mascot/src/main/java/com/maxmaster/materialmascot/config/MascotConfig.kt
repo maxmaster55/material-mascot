@@ -14,6 +14,28 @@ import com.maxmaster.materialmascot.engine.BotState
 import com.maxmaster.materialmascot.engine.EyeStyle
 
 /**
+ * How the body is painted.
+ *
+ * Every finish keeps the exact same silhouette and animation; only the paint
+ * changes. [FLAT] is the reference look, [CHROME] adds depth, and [OUTLINE]
+ * strips the fill away entirely.
+ */
+public enum class MascotFinish {
+    /** One solid fill: the reference look, and how the bot was measured. */
+    FLAT,
+
+    /** Lit body, rim light, specular, ground shadow, glowing eyes. */
+    CHROME,
+
+    /**
+     * Line art: an unfilled body drawn as a stroke, with the eyes in the same
+     * ink. Reads clearly on any background — including a photo or a coloured
+     * card, where a filled bot fights whatever is behind it.
+     */
+    OUTLINE
+}
+
+/**
  * Host-owned immutable configuration for the Material Bot mascot.
  *
  * All fields are immutable so this can be backed by DataStore,
@@ -31,6 +53,8 @@ import com.maxmaster.materialmascot.engine.EyeStyle
  *               video, ~1.6 = cheerful and active. Scales gaze drift speed,
  *               blink cadence, breathing and floating amplitude. Default: 1.9.
  * @param eyeStyle Eye shape personality transform. Default: [EyeStyle.CLASSIC].
+ * @param finish How the body is painted. Default [MascotFinish.FLAT], which
+ *               renders identically to before this option existed.
  */
 @Immutable
 public data class MascotConfig(
@@ -42,5 +66,6 @@ public data class MascotConfig(
     public val size: Dp = 64.dp,
     public val motion: Boolean = true,
     public val energy: Float = 1.9f,
-    public val eyeStyle: EyeStyle = EyeStyle.CLASSIC
+    public val eyeStyle: EyeStyle = EyeStyle.CLASSIC,
+    public val finish: MascotFinish = MascotFinish.FLAT
 )
