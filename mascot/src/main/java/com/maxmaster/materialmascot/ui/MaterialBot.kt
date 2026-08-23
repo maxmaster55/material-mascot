@@ -171,6 +171,22 @@ public fun MaterialBot(
                 outline -> drawOutlineBody(frame.bodyPoints, config.color, sizePx, bodyPath)
                 else -> drawBody(frame.bodyPoints, config.color, bodyPath)
             }
+            // Swirl and Orbit build these rings, but nothing ever painted
+            // them — both states rendered as a plain resting ball. The engine
+            // scales arc centres to pixels and leaves radius and stroke in
+            // ball-radius units, so they are converted here.
+            if (frame.arcs.isNotEmpty()) {
+                val ballR = sizePx * BotEngine.RADIUS_FRACTION
+                frame.arcs.forEach { arc ->
+                    drawCircle(
+                        color = inkColor,
+                        radius = arc.r * ballR,
+                        center = Offset(arc.x, arc.y),
+                        alpha = arc.alpha,
+                        style = Stroke(width = arc.stroke * ballR)
+                    )
+                }
+            }
             frame.dots.forEach { drawDot(it, config.color, inkColor, sizePx, bodyPath) }
             frame.eyes.forEach {
                 drawEye(

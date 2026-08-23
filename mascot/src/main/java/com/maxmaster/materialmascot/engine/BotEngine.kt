@@ -94,7 +94,9 @@ public class BotEngine(
      * No internal state is mutated — all animation state derives from [nowMs].
      *
      * @param nowMs Current time in milliseconds since epoch.
-     * @param scalePx The bot's ball radius in pixels (canvas half-side * RADIUS_FRACTION).
+     * @param scalePx The canvas side in pixels. The ball radius is derived as
+     *                `scalePx * RADIUS_FRACTION` — every caller passes the full
+     *                canvas size, and the rendered bot is calibrated to that.
      * @param reducedMotion If true, disables decorative motion (gaze drift, breathing, positional float).
      * @param energy Liveliness multiplier (1.0 = reference video calm, higher = more active).
      * @param eyeStyle Eye shape personality transform.
