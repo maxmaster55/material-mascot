@@ -51,7 +51,9 @@ import com.maxmaster.materialmascot.engine.BotEngine
 import com.maxmaster.materialmascot.engine.BotState
 import com.maxmaster.materialmascot.engine.DotSpec
 import com.maxmaster.materialmascot.engine.EAR_LEFT
+import com.maxmaster.materialmascot.engine.EAR_LEFT_BASE
 import com.maxmaster.materialmascot.engine.EAR_RIGHT
+import com.maxmaster.materialmascot.engine.EAR_RIGHT_BASE
 import com.maxmaster.materialmascot.engine.EAR_LEFT_PIVOT
 import com.maxmaster.materialmascot.engine.EAR_RIGHT_PIVOT
 import com.maxmaster.materialmascot.engine.EAR_TIP_Y
@@ -469,12 +471,29 @@ private fun tracedPath(
     ox: Float, oy: Float,
     xx: Float, xy: Float,
     yx: Float, yy: Float,
-    path: Path
+    path: Path,
+    base: IntRange,
+    buryLen: Float
 ) {
     val n = shape.size
     fun at(i: Int): Offset {
-        val p = shape[((i % n) + n) % n]
-        return Offset(ox + xx * p.x + yx * p.y, oy + xy * p.x + yy * p.y)
+        val k = ((i % n) + n) % n
+        val p = shape[k]
+        // The ear flares toward its base: the traced tip is what reads as cat,
+        // the bottom is what reads as attached, so the lower it goes the wider
+        // it gets.
+        val flare = 1f + EAR_BASE_FLARE * (1f - (p.y / EAR_TIP_Y).coerceIn(0f, 1f))
+        val px = p.x * flare
+        val x = ox + xx * px + yx * p.y
+        val y = oy + xy * px + yy * p.y
+        // Base points are pinned inside the body, never merely placed near it:
+        // the drawing origin IS the body centre here, so one clamp on the
+        // radius holds at every pose rotation and morph.
+        if (k in base) {
+            val d = kotlin.math.hypot(x, y)
+            if (d > buryLen) return Offset(x * buryLen / d, y * buryLen / d)
+        }
+        return Offset(x, y)
     }
     path.reset()
     val first = at(0)
@@ -501,20 +520,39 @@ private const val EAR_WIDTH = 0.74f
  *  more" intent as [EAR_WIDTH]: cat, but understated. */
 private const val EAR_TIP_DAMP = 0.9f
 
-/** The tallest pose perk in [earPoseFor] — [CAT_FIT] budgets the canvas for it. */
+/** The tallest pose perk in [earPoseFor] — the reach behind [CAT_FIT] is
+ *  measured at it. */
 private const val EAR_PERK_MAX = 1.20f
+
+/** How much wider the ear gets at its base than it was traced, tapering to
+ *  nothing at the tip. Broadens the part that shows above the head without
+ *  turning the tip blunt. */
+private const val EAR_BASE_FLARE = 0.20f
+
+/**
+ * How deep the ear base is pinned inside the body, as a fraction of the ball
+ * radius. Anything closer to the edge can be swung back into view by a splayed
+ * pose; at this depth no flare, rotation or squash lifts it out. It sits under
+ * the body paint (and is clipped away in line art), so it costs nothing.
+ */
+private const val EAR_BURY = 0.86f
 
 /** How far the ear bases sit below the crown, in head radii. Deep enough that the body swallows the base curve at every pose, shallow enough that a good stretch of ear still shows. */
 private const val EAR_SINK = 0.45f
 
 /**
+ * How far the eared silhouette stands from the body centre, in ball radii,
+ * worst case over every pose corner — splay swings a tip further out than the
+ * upright height alone, so this is measured with `preview_ears.py --reach`
+ * rather than derived. That tool asserts it still holds.
+ */
+private const val EAR_REACH = 1.62f
+
+/**
  * How much smaller cat mode draws the bot, so the ear tips land where the
  * plain bot's crown does and the footprint the host padded for is unchanged.
- * A tip reaches `1 - EAR_SINK + EAR_TIP_Y * EAR_WIDTH * perk * EAR_TIP_DAMP`
- * head radii above centre, worst case at [EAR_PERK_MAX].
  */
-private const val CAT_FIT = 1f /
-    (1f - EAR_SINK + EAR_TIP_Y * EAR_WIDTH * EAR_PERK_MAX * EAR_TIP_DAMP)
+private const val CAT_FIT = 1f / EAR_REACH
 
 /**
  * Two ears at the crown, from the measured pair in [EAR_LEFT] / [EAR_RIGHT].
@@ -562,6 +600,7 @@ private fun DrawScope.drawCatEars(
 
     for (side in intArrayOf(-1, 1)) {
         val shape = if (side < 0) EAR_LEFT else EAR_RIGHT
+        val base = if (side < 0) EAR_LEFT_BASE else EAR_RIGHT_BASE
         val pivot = if (side < 0) EAR_LEFT_PIVOT else EAR_RIGHT_PIVOT
         val pose = (splayDeg + (if (side == twitchSide) twitchDeg else 0f))
             .coerceIn(-EAR_SPLAY_LIMIT, EAR_SPLAY_LIMIT)
@@ -577,7 +616,7 @@ private fun DrawScope.drawCatEars(
         val yx = (-e1x * sn + e2x * c) * perk * EAR_TIP_DAMP
         val yy = (-e1y * sn + e2y * c) * perk * EAR_TIP_DAMP
 
-        tracedPath(shape, ox, oy, xx, xy, yx, yy, path)
+        tracedPath(shape, ox, oy, xx, xy, yx, yy, path, base, ballR * EAR_BURY)
         when {
             outline -> drawPath(
                 path = path,

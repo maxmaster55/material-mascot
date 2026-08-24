@@ -27,6 +27,7 @@ TIP_Y = 1.0673               # EAR_TIP_Y
 RADIUS_FRACTION = 100 / 158  # BotEngine.RADIUS_FRACTION
 TIP_DAMP = 0.9               # EAR_TIP_DAMP
 PERK_MAX = 1.20              # EAR_PERK_MAX
+BURY = 0.86                  # EAR_BURY
 
 
 def load(name, path=None):
@@ -55,7 +56,14 @@ def body_points(size):
     ]
 
 
-def ears(points, shapes, pivots, width, sink, splay, perk):
+def base_range(shape):
+    """EarShape.baseRange: the stretch drawn to sit on the head."""
+    outer = min(range(len(shape)), key=lambda i: shape[i][1])
+    inner = min(range(len(shape)), key=lambda i: abs(shape[i][0]))
+    return range(min(outer, inner), max(outer, inner) + 1)
+
+
+def ears(points, shapes, pivots, width, sink, splay, perk, bury, flare):
     """The Kotlin frame math, line for line."""
     n = len(points)
     crown = points[n * 3 // 4]
@@ -73,23 +81,50 @@ def ears(points, shapes, pivots, width, sink, splay, perk):
         xx, xy = e1x * c + e2x * sn, e1y * c + e2y * sn
         yx, yy = (-e1x * sn + e2x * c) * perk, (-e1y * sn + e2y * c) * perk
         frame = (ox, oy, xx, xy, yx, yy)
-        mapped = [(ox + xx * px + yx * py, oy + xy * px + yy * py) for px, py in shape]
+        base = base_range(shape)
+        mapped = []
+        for i, (px, py) in enumerate(shape):
+            px *= 1 + flare * (1 - min(max(py / TIP_Y, 0.0), 1.0))   # base flare
+            x, y = ox + xx * px + yx * py, oy + xy * px + yy * py
+            d = math.hypot(x, y)
+            if i in base and d > bury:      # pinned inside the body
+                x, y = x * bury / d, y * bury / d
+            mapped.append((x, y))
         out.append((mapped, frame))
     return out
 
 
-def cat_fit(width, sink):
-    """MaterialBot.CAT_FIT: shrink so the tallest tip reaches the plain crown."""
-    return 1 / (1 - sink + TIP_Y * width * PERK_MAX * TIP_DAMP)
+# MaterialBot.EAR_REACH: how far the eared silhouette stands from the centre,
+# in ball radii, worst case over the pose corners. Measured with reach(), which
+# is why check_fit() below is an assertion and not a comment.
+EAR_REACH = 1.62
 
 
-def check_fit(width, sink):
-    """The tips must land inside the earless bot's footprint, at any pose."""
-    plain = RADIUS_FRACTION            # earless crown, in canvas units
-    r = RADIUS_FRACTION * cat_fit(width, sink)
+def cat_fit():
+    """MaterialBot.CAT_FIT: shrink until the ears fit the earless footprint."""
+    return 1 / EAR_REACH
+
+
+def reach(shapes, pivots, width, sink, flare, bury):
+    """Worst-case distance from the body centre to any ear point, in ball radii."""
+    pts = body_points(1.0)
+    r = RADIUS_FRACTION
+    worst = 0.0
     for perk in (0.76, 1.0, PERK_MAX):
-        reach = r * (1 - sink + TIP_Y * width * perk * TIP_DAMP)
-        assert reach <= plain + 1e-6, f"perk {perk}: tips reach {reach} > {plain}"
+        for splay in (-12.0, 0.0, 12.0):
+            for mapped, _ in ears(pts, shapes, pivots, r * width, r * sink,
+                                  splay, perk * TIP_DAMP, r * bury, flare):
+                worst = max(worst, max(math.hypot(x, y) for x, y in mapped))
+    return worst / r
+
+
+def check_fit(shapes, pivots, width, sink, flare, bury):
+    """No pose may push any part of an ear past the earless bot's footprint."""
+    got = reach(shapes, pivots, width, sink, flare, bury)
+    assert got <= EAR_REACH + 1e-4, (
+        f"ears reach {got:.4f} ball radii > EAR_REACH {EAR_REACH} — "
+        f"raise EAR_REACH in MaterialBot.kt and here, or pull the ears in"
+    )
 
 
 def main():
@@ -99,15 +134,20 @@ def main():
     ap.add_argument("--splay", type=float, default=0.0, help="pose rotation, degrees")
     ap.add_argument("--perk", type=float, default=1.0, help="pose length multiplier")
     ap.add_argument("--shape", help="read the points from this .kt instead of EarShape.kt")
+    ap.add_argument("--flare", type=float, default=0.20, help="EAR_BASE_FLARE")
+    ap.add_argument("--bury", type=float, default=BURY, help="EAR_BURY")
     ap.add_argument("--outline", action="store_true", help="line art, as MascotFinish.OUTLINE draws")
+    ap.add_argument("--reach", action="store_true", help="print the measured reach and exit")
     ap.add_argument("--size", type=int, default=420)
     ap.add_argument("--out", default="/tmp/ears_preview.png")
     args = ap.parse_args()
 
     shapes = (load("EAR_LEFT", args.shape), load("EAR_RIGHT", args.shape))
     pivots = (load_const("EAR_LEFT_PIVOT", args.shape), load_const("EAR_RIGHT_PIVOT", args.shape))
-
-    check_fit(args.width, args.sink)
+    if args.reach:
+        print(round(reach(shapes, pivots, args.width, args.sink, args.flare, args.bury), 4))
+        return
+    check_fit(shapes, pivots, args.width, args.sink, args.flare, args.bury)
 
     size = args.size
     bg = "#111114"
@@ -119,14 +159,14 @@ def main():
     cx = cy = canvas / 2
     # What the app does: cat mode draws the bot at CAT_FIT so the tips land
     # where the earless crown would.
-    draw_px = size * cat_fit(args.width, args.sink)
+    draw_px = size * cat_fit()
     r = draw_px * RADIUS_FRACTION
     fill = "#F2F0E9"
 
     pts = body_points(draw_px)
     drawn = ears(
         pts, shapes, pivots, r * args.width, r * args.sink,
-        args.splay, args.perk * TIP_DAMP,
+        args.splay, args.perk * TIP_DAMP, r * args.bury, args.flare,
     )
     # The footprint the host padded for: the earless ball at the full size.
     plain = size * RADIUS_FRACTION
