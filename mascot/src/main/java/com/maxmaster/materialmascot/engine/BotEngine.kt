@@ -223,10 +223,38 @@ public class BotEngine(
             dots = dots,
             arcs = arcs,
             notif = notif,
-            state = cur
+            state = cur,
+            ballness = ballness(pose.sil.radii)
         )
     }
 }
+
+/**
+ * 1 while the profile is a circle of about the resting size, falling to 0 as it
+ * deforms into anything else. Squash, stretch and breathing are the ball being
+ * alive, so they are deliberately not counted — only the radial profile is.
+ */
+private fun ballness(radii: FloatArray): Float {
+    var lo = Float.MAX_VALUE
+    var hi = -Float.MAX_VALUE
+    var sum = 0f
+    radii.forEach {
+        if (it < lo) lo = it
+        if (it > hi) hi = it
+        sum += it
+    }
+    val mean = sum / radii.size
+    if (mean < 1e-4f) return 0f
+    // A ball reads as a ball while its profile stays within a few percent of
+    // round and near full size; past that the ears are gone well before the
+    // shape is recognisably something else.
+    val round = 1f - ((hi - lo) / mean) / BALL_ROUND_TOLERANCE
+    val full = 1f - (1f - mean.coerceAtMost(1f)) / BALL_SIZE_TOLERANCE
+    return minOf(round, full).coerceIn(0f, 1f)
+}
+
+private const val BALL_ROUND_TOLERANCE = 0.16f
+private const val BALL_SIZE_TOLERANCE = 0.35f
 
 /**
  * Pure data: what a bot looks like at one instant, in canvas pixels around (0,0).
@@ -246,7 +274,15 @@ public data class BotFrame(
     /** Notification badge, if any. */
     public val notif: NotifBadge?,
     /** The [BotState] this frame represents. */
-    public val state: BotState
+    public val state: BotState,
+    /**
+     * How much this frame is still the resting ball, 1 to 0.
+     *
+     * Cat ears belong on a head, not on a speech bubble or a loading dot, and
+     * a morph is continuous — so this is a fade, not a flag: the ears retract
+     * into the silhouette as it stops being a ball and grow back as it returns.
+     */
+    public val ballness: Float = 1f
 )
 
 /**

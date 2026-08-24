@@ -388,6 +388,17 @@ internal fun fidget(ts: Float): Triple<Float, Float, Float> {
     }
 }
 
+/**
+ * How much further the idle gaze wanders than the reference video's own drift.
+ *
+ * The eyes are already anchored on a sphere — [eyePoses] places them in 3D and
+ * hands back the projected tangent frame, so they foreshorten and slide behind
+ * the limb on their own. At the measured amplitude they barely leave centre,
+ * which wastes that: the bot reads as a flat face with jittering dots. Sweeping
+ * wider is what makes the head read as a ball being looked around.
+ */
+private const val GAZE_SWEEP = 2.3f
+
 internal fun liveliness(
     t: Float,
     wander: Float = 1f,
@@ -409,9 +420,9 @@ internal fun liveliness(
     val (fidgetYaw, fidgetPitch, fidgetLid) = fidget(ts)
     return Liveliness(
         dYaw = (loopNoise(t, 11.3f / e, 0.4f) * 5.5f + loopNoise(t, 3.7f / e, 2.1f) * 1.6f) *
-            wander * e + (sacYaw + glanceYaw + fidgetYaw) * wander * amp,
+            GAZE_SWEEP * wander * e + (sacYaw + glanceYaw + fidgetYaw) * wander * amp,
         dPitch = (loopNoise(t, 9.1f / e, 1.3f) * 4.2f + loopNoise(t, 4.3f / e, 0.7f) * 1.3f) *
-            wander * e + (sacPitch + glancePitch + fidgetPitch) * wander * amp,
+            GAZE_SWEEP * wander * e + (sacPitch + glancePitch + fidgetPitch) * wander * amp,
         dRoll = loopNoise(t, 13.7f / e, 3.2f) * 2.2f * wander * e,
         lid = if (blink) minOf(blinkLid(ts), squintLid(ts), fidgetLid) else 1f,
         // At rest the video is nearly motionless (center stable +-0.003):

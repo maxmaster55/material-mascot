@@ -49,11 +49,10 @@ import com.maxmaster.materialmascot.config.MascotFinish
 import com.maxmaster.materialmascot.engine.BotEngine
 import com.maxmaster.materialmascot.engine.BotState
 import com.maxmaster.materialmascot.engine.DotSpec
-import com.maxmaster.materialmascot.engine.EAR_LEFT
-import com.maxmaster.materialmascot.engine.EAR_RIGHT
-import com.maxmaster.materialmascot.engine.EAR_LEFT_PIVOT
-import com.maxmaster.materialmascot.engine.EAR_RIGHT_PIVOT
-import com.maxmaster.materialmascot.engine.EAR_TIP_Y
+import com.maxmaster.materialmascot.engine.EAR_FROM_DEG
+import com.maxmaster.materialmascot.engine.EAR_PROFILE
+import com.maxmaster.materialmascot.engine.EAR_STEP_DEG
+import com.maxmaster.materialmascot.engine.EAR_TIP_REACH
 import com.maxmaster.materialmascot.engine.NOTIF_BLUE
 import com.maxmaster.materialmascot.engine.RenderedEye
 import com.maxmaster.materialmascot.engine.TEAR_POINTS
@@ -161,12 +160,10 @@ public fun MaterialBot(
     }
 
     val bodyPath = remember { Path() }
-    val earPath = remember { Path() }
+    val tearPath = remember { Path() }
     val tearPath = remember { Path() }
     // The body outline with the ears merged into it, refilled every frame.
-    val catPoints = remember { ArrayList<Offset>(96) }
-    val catSplice = remember { ArrayList<Offset>(EAR_LEFT.size + 4) }
-    val earXy = remember { FloatArray(EAR_LEFT.size * 2) }
+    val catPoints = remember { ArrayList<Offset>(CAT_SAMPLES) }
     val eyeSrcPath = remember { Path() }
     val eyeDstPath = remember { Path() }
     val eyeMatrix = remember { android.graphics.Matrix() }
@@ -203,13 +200,11 @@ public fun MaterialBot(
                 val twitch = if (config.motion) earTwitch(frameMs, config.energy) else 0f
                 catSilhouette(
                     points = frame.bodyPoints,
-                    sizePx = drawPx,
+                    ballness = frame.ballness,
                     perk = earPerk,
                     splayDeg = earSplay,
                     twitchDeg = twitch,
                     twitchSide = twitchSide(frameMs),
-                    xy = earXy,
-                    splice = catSplice,
                     out = catPoints
                 )
             } else {
@@ -234,11 +229,16 @@ public fun MaterialBot(
                 }
             }
             frame.dots.forEach { drawDot(it, config.color, inkColor, drawPx, tearPath) }
-            frame.eyes.forEach {
-                drawEye(
-                    it, inkColor, eyeSrcPath, eyeDstPath, eyeMatrix,
-                    glow = chrome?.eyesGlow == true
-                )
+            // The eyes ride the surface of a ball, so the ball's edge is where
+            // they end: clipped to the silhouette, an eye that slides toward the
+            // limb is cut off by the form instead of hanging over it.
+            clipPath(bodyPath) {
+                frame.eyes.forEach {
+                    drawEye(
+                        it, inkColor, eyeSrcPath, eyeDstPath, eyeMatrix,
+                        glow = chrome?.eyesGlow == true
+                    )
+                }
             }
             frame.notif?.let {
                 drawCircle(
@@ -440,33 +440,35 @@ private const val TWITCH_MS = 260f
 private fun mix(a: Offset, b: Offset, t: Float) =
     Offset(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
 
-/** Half-span of the traced ear pair, in head radii. Kept modest so the ears
- *  read as a quiet accent on the silhouette, not a second character. */
-private const val EAR_WIDTH = 0.74f
+/** How many points the eared outline is built from. The body's own profile is
+ *  64, so this loses nothing there, and it takes about this many to keep the
+ *  traced ear tip a point rather than a facet. */
+private const val CAT_SAMPLES = 192
 
-/** Global tip-height damping on top of the pose perk — the same "less is
- *  more" intent as [EAR_WIDTH]: cat, but understated. */
+/** Tip-height damping on top of the traced reach — the one knob for "cat, but
+ *  understated". It scales only what stands proud of the head, so the ears can
+ *  go as low as you like without ever detaching. */
 private const val EAR_TIP_DAMP = 0.9f
 
-/** The tallest pose perk in [earPoseFor] — the reach behind [CAT_FIT] is
- *  measured at it. */
+/** The tallest pose perk in [earPoseFor] — [CAT_FIT] budgets the canvas for it. */
 private const val EAR_PERK_MAX = 1.20f
 
-/** How much wider the ear gets at its base than it was traced, tapering to
- *  nothing at the tip. Broadens the part that shows above the head without
- *  turning the tip blunt. */
-private const val EAR_BASE_FLARE = 0.20f
+/** How far each ear sits from the crown beyond where it was traced, in degrees.
+ *  The reference draws them close together on a wide head; on this rounder one
+ *  they want more daylight between them. */
+private const val EAR_SPREAD = 7f
 
-/** How far the ear bases sit below the crown, in head radii. Deep enough that the body swallows the base curve at every pose, shallow enough that a good stretch of ear still shows. */
-private const val EAR_SINK = 0.45f
+/** Width of the blend where an ear meets the head, in body radii. This is the
+ *  difference between an ear that grows out of the skull and one that looks
+ *  glued on: the union is tangent to the ball, not incident to it. */
+private const val EAR_MELT = 0.13f
 
 /**
- * How far the eared silhouette stands from the body centre, in ball radii,
- * worst case over every pose corner — splay swings a tip further out than the
- * upright height alone, so this is measured with `preview_ears.py --reach`
- * rather than derived. That tool asserts it still holds.
+ * How far the eared silhouette stands from the body centre, in body radii, at
+ * the tallest pose: the traced tips reach [EAR_TIP_REACH], damped, and a
+ * smooth union can only ever pull the outline in.
  */
-private const val EAR_REACH = 1.62f
+private const val EAR_REACH = 1f + (EAR_TIP_REACH - 1f) * EAR_PERK_MAX * EAR_TIP_DAMP
 
 /**
  * How much smaller cat mode draws the bot, so the ear tips land where the
@@ -475,197 +477,120 @@ private const val EAR_REACH = 1.62f
 private const val CAT_FIT = 1f / EAR_REACH
 
 /**
- * The body outline with the ears merged into it, as one list of points.
+ * The body outline with the ears grown out of it, as one list of points.
  *
- * An ear painted as its own shape reads as a shape stuck on the head: wherever
- * its outline crosses the body's, the union leaves a corner, and a corner is
- * what looks rigid. So the ear is never a separate shape — the stretch of it
- * that stands outside the body replaces the stretch of body outline it covers,
- * and [buildBodyPath] splines the result. A spline through points has no
- * corners, so the ear flows out of the head and back into it, and every finish,
- * clip and fill downstream sees one silhouette.
+ * The ears are not a shape placed on the head — they are part of the same
+ * profile. [EAR_PROFILE] says, for each angle off the crown, how far the traced
+ * silhouette stands out in head radii; this samples the live body the same way
+ * and takes a SMOOTH union of the two. Two consequences, both of them the point:
  *
- * The junctions are the exact crossing points, interpolated, so the seam sits
- * on the outline rather than near it.
+ *  - They cannot come off. There is one outline, not two overlapping shapes, so
+ *    no pose, squash or morph has a seam to open.
+ *  - The join flows. A plain max() leaves the crease that makes an ear look
+ *    glued on; blending over [EAR_MELT] brings the ear out of the head tangent
+ *    to it, the way a real ear meets a skull, and the tips stay sharp because
+ *    nothing blends out there.
+ *
+ * The ear rides the body's own radius at each angle, so it squashes, stretches
+ * and drifts with whatever the state is doing, and [ballness] retracts it as the
+ * silhouette stops being a ball — ears belong on a head, not on a speech bubble.
  */
 private fun catSilhouette(
     points: List<Offset>,
-    sizePx: Float,
+    ballness: Float,
     perk: Float,
     splayDeg: Float,
     twitchDeg: Float,
     twitchSide: Int,
-    xy: FloatArray,
-    splice: ArrayList<Offset>,
     out: ArrayList<Offset>
 ): List<Offset> {
     val n = points.size
-    if (n < 8) return points
-    val ballR = sizePx * BotEngine.RADIUS_FRACTION
-    val half = ballR * EAR_WIDTH
-    val sink = ballR * EAR_SINK
-
+    if (n < 8 || ballness <= 0.01f) return points
     val crown = points[n * 3 / 4]
-    val crownLen = kotlin.math.hypot(crown.x, crown.y)
-    if (crownLen < 1e-3f) return points
-    // Outward at the crown, and its perpendicular: the pair's up and right.
-    val ux = crown.x / crownLen
-    val uy = crown.y / crownLen
-    val e1x = -uy * half
-    val e1y = ux * half
-    val e2x = ux * half
-    val e2y = uy * half
+    val up = kotlin.math.atan2(crown.y, crown.x)
+    val stand = perk * EAR_TIP_DAMP * ballness
 
     out.clear()
-    // Each ear becomes a run of points to splice in, plus the arc of body
-    // outline it replaces. Two runs, kept flat to avoid per-frame garbage.
-    var runs = 0
-    val runFrom = FloatArray(2)
-    val runTo = FloatArray(2)
-    val runStart = IntArray(2)
-    val runEnd = IntArray(2)
-    splice.clear()
-
-    for (side in intArrayOf(-1, 1)) {
-        val shape = if (side < 0) EAR_LEFT else EAR_RIGHT
-        val pivot = if (side < 0) EAR_LEFT_PIVOT else EAR_RIGHT_PIVOT
+    for (i in 0 until CAT_SAMPLES) {
+        val a = i.toFloat() / CAT_SAMPLES * 2f * PI.toFloat()
+        val bodyR = bodyRadius(points, a)
+        // Angle off the crown, signed: negative to the bot's left.
+        var off = a - up
+        while (off > PI.toFloat()) off -= 2f * PI.toFloat()
+        while (off < -PI.toFloat()) off += 2f * PI.toFloat()
+        val side = if (off < 0f) -1 else 1
+        // Splay swings the ear about the head centre, which is why it can never
+        // lever the base off the body: it is only ever a phase shift.
         val pose = (splayDeg + (if (side == twitchSide) twitchDeg else 0f))
             .coerceIn(-EAR_SPLAY_LIMIT, EAR_SPLAY_LIMIT)
-        val rad = -side * pose * PI.toFloat() / 180f
-        val c = cos(rad)
-        val sn = sin(rad)
-
-        val ox = crown.x - ux * sink + e1x * pivot * (1f - c) - e2x * pivot * sn
-        val oy = crown.y - uy * sink + e1y * pivot * (1f - c) - e2y * pivot * sn
-        val xx = e1x * c + e2x * sn
-        val xy2 = e1y * c + e2y * sn
-        val yx = (-e1x * sn + e2x * c) * perk * EAR_TIP_DAMP
-        val yy = (-e1y * sn + e2y * c) * perk * EAR_TIP_DAMP
-
-        val m = shape.size
-        for (i in 0 until m) {
-            val p = shape[i]
-            // The ear flares toward its base: the traced tip is what reads as
-            // cat, the bottom is what reads as attached.
-            val flare = 1f + EAR_BASE_FLARE * (1f - (p.y / EAR_TIP_Y).coerceIn(0f, 1f))
-            val px = p.x * flare
-            xy[i * 2] = ox + xx * px + yx * p.y
-            xy[i * 2 + 1] = oy + xy2 * px + yy * p.y
-        }
-        // Walk the ear looking for the one run that stands outside the body.
-        var first = -1
-        for (i in 0 until m) {
-            val inside = insideBody(points, xy[i * 2], xy[i * 2 + 1])
-            val nextOut = !insideBody(points, xy[((i + 1) % m) * 2], xy[((i + 1) % m) * 2 + 1])
-            if (inside && nextOut) {
-                first = (i + 1) % m
-                break
-            }
-        }
-        if (first < 0) continue          // wholly buried: nothing to splice
-        var count = 0
-        while (count < m &&
-            !insideBody(points, xy[((first + count) % m) * 2], xy[((first + count) % m) * 2 + 1])
-        ) {
-            count++
-        }
-        val enter = crossing(points, xy, (first - 1 + m) % m, first)
-        val leave = crossing(points, xy, (first + count - 1) % m, (first + count) % m)
-        val aEnter = angleOf(enter)
-        val aLeave = angleOf(leave)
-        // The run has to read in the body's own winding direction.
-        val forward = arcLength(aEnter, aLeave) < PI.toFloat()
-        runStart[runs] = splice.size
-        splice.add(if (forward) enter else leave)
-        for (k in 0 until count) {
-            val i = (if (forward) first + k else first + count - 1 - k) % m
-            splice.add(Offset(xy[i * 2], xy[i * 2 + 1]))
-        }
-        splice.add(if (forward) leave else enter)
-        runEnd[runs] = splice.size
-        runFrom[runs] = if (forward) aEnter else aLeave
-        runTo[runs] = if (forward) aLeave else aEnter
-        runs++
-    }
-    if (runs == 0) return points
-
-    val emitted = BooleanArray(runs)
-    for (i in 0 until n) {
-        val a = angleOf(points[i])
-        val prev = angleOf(points[(i - 1 + n) % n])
-        for (r in 0 until runs) {
-            // Splice the ear in as soon as the outline reaches where it starts.
-            if (!emitted[r] && arcLength(prev, runFrom[r]) <= arcLength(prev, a)) {
-                for (k in runStart[r] until runEnd[r]) out.add(splice[k])
-                emitted[r] = true
-            }
-        }
-        var covered = false
-        for (r in 0 until runs) {
-            if (arcLength(runFrom[r], a) <= arcLength(runFrom[r], runTo[r])) covered = true
-        }
-        if (!covered) out.add(points[i])
-    }
-    for (r in 0 until runs) {
-        if (!emitted[r]) for (k in runStart[r] until runEnd[r]) out.add(splice[k])
+        val deg = kotlin.math.abs(off) * 180f / PI.toFloat() - pose - EAR_SPREAD
+        // Perk stretches only what stands proud of the head, so the base stays
+        // welded at every pose.
+        val profile = earProfile(deg)
+        val earR = if (profile <= 0f) 0f else bodyR * (1f + (profile - 1f) * stand)
+        val r = smoothMax(bodyR, earR, bodyR * EAR_MELT)
+        out.add(Offset(cos(a) * r, sin(a) * r))
     }
     return out
 }
 
-/** Is (x, y) inside the sampled silhouette? Compared along its own direction,
- *  which is exact for the radial profiles this engine draws. */
-private fun insideBody(points: List<Offset>, x: Float, y: Float): Boolean {
-    val len = kotlin.math.hypot(x, y)
-    if (len < 1e-4f) return true
-    return len <= outlineRadius(points, x / len, y / len)
+/** [EAR_PROFILE] at an arbitrary angle off the crown, interpolated. */
+private fun earProfile(deg: Float): Float {
+    val x = (deg - EAR_FROM_DEG) / EAR_STEP_DEG
+    if (x <= 0f || x >= (EAR_PROFILE.size - 1).toFloat()) return 0f
+    val i = x.toInt()
+    return EAR_PROFILE[i] + (EAR_PROFILE[i + 1] - EAR_PROFILE[i]) * (x - i)
 }
 
-/** Distance from the centre to the sampled outline in direction (dx, dy). */
-private fun outlineRadius(points: List<Offset>, dx: Float, dy: Float): Float {
-    // ponytail: linear scan of 64 samples; index by angle if it ever shows up
-    // in a frame trace.
+/**
+ * Distance from the centre to the sampled outline at [angle], interpolated
+ * between the two samples that bracket it.
+ *
+ * Every silhouette this engine draws is a radial profile, so reading the body
+ * back this way is lossless — which is what lets the ears be part of the same
+ * profile instead of a shape laid over it.
+ */
+private fun bodyRadius(points: List<Offset>, angle: Float): Float {
+    // ponytail: linear scan of 64 samples per output point. Worth indexing by
+    // angle only if a screen ever draws dozens of bots at once.
+    val dx = cos(angle)
+    val dy = sin(angle)
     var bestDot = -Float.MAX_VALUE
     var best = 0f
+    var nextDot = -Float.MAX_VALUE
+    var next = 0f
     points.forEach { p ->
         val len = kotlin.math.hypot(p.x, p.y)
         if (len > 1e-3f) {
             val dot = (p.x * dx + p.y * dy) / len
             if (dot > bestDot) {
+                nextDot = bestDot
+                next = best
                 bestDot = dot
                 best = len
+            } else if (dot > nextDot) {
+                nextDot = dot
+                next = len
             }
         }
     }
-    return best
+    if (nextDot <= -1f) return best
+    // Blend the two samples nearest this direction, so resampling a 64-point
+    // body at [CAT_SAMPLES] does not polygonise it.
+    val span = (bestDot - nextDot).coerceAtLeast(1e-6f)
+    val t = (0.5f - span * 0.5f / (1f - nextDot).coerceAtLeast(1e-6f)).coerceIn(0f, 0.5f)
+    return best + (next - best) * t
 }
 
-/** Where the ear outline crosses the body outline, between two of its points. */
-private fun crossing(points: List<Offset>, xy: FloatArray, i: Int, j: Int): Offset {
-    var lo = 0f
-    var hi = 1f
-    val ax = xy[i * 2]
-    val ay = xy[i * 2 + 1]
-    val bx = xy[j * 2]
-    val by = xy[j * 2 + 1]
-    repeat(12) {
-        val t = (lo + hi) / 2f
-        val x = ax + (bx - ax) * t
-        val y = ay + (by - ay) * t
-        if (insideBody(points, x, y)) lo = t else hi = t
-    }
-    val t = (lo + hi) / 2f
-    return Offset(ax + (bx - ax) * t, ay + (by - ay) * t)
-}
-
-private fun angleOf(p: Offset): Float {
-    val a = kotlin.math.atan2(p.y, p.x)
-    return if (a < 0f) a + 2f * PI.toFloat() else a
-}
-
-/** Distance from angle [from] to angle [to], going the way the outline runs. */
-private fun arcLength(from: Float, to: Float): Float {
-    val d = to - from
-    return if (d < 0f) d + 2f * PI.toFloat() else d
+/**
+ * Maximum of [a] and [b] rounded over a window of [k] instead of meeting at a
+ * corner: the smooth union of signed-distance work, in the one dimension this
+ * needs it.
+ */
+private fun smoothMax(a: Float, b: Float, k: Float): Float {
+    if (k <= 1e-4f) return if (a > b) a else b
+    val h = (0.5f + 0.5f * (a - b) / k).coerceIn(0f, 1f)
+    return (b + (a - b) * h) + k * h * (1f - h)
 }
 
 private fun DrawScope.drawEye(
