@@ -137,10 +137,14 @@ public class BotEngine(
             energy = energy
         )
 
+        // Every state is authored as a departure from rest, so turning the
+        // expression up is one operation: push that departure further. Applied
+        // after the transition blend, so morphs stay smooth and only the
+        // destination gets louder.
         val gaze = HeadGaze(
-            yaw = pose.gaze.yaw + life.dYaw,
-            pitch = pose.gaze.pitch + life.dPitch,
-            roll = pose.gaze.roll + life.dRoll
+            yaw = louder(Face.REST_GAZE.yaw, pose.gaze.yaw) + life.dYaw,
+            pitch = louder(Face.REST_GAZE.pitch, pose.gaze.pitch) + life.dPitch,
+            roll = louder(Face.REST_GAZE.roll, pose.gaze.roll) + life.dRoll
         )
 
         // Blink triggered by the state change itself, on top of the calendar.
@@ -157,8 +161,9 @@ public class BotEngine(
             rot = pose.sil.rot,
             cx = pose.sil.cx + offX,
             cy = pose.sil.cy + offY,
-            sx = pose.sil.sx,
-            sy = pose.sil.sy * life.breath
+            // Squash and stretch carry as much of the mood as the face does.
+            sx = louder(1f, pose.sil.sx),
+            sy = louder(1f, pose.sil.sy) * life.breath
         )
         val bodyPoints = ArrayList<Offset>(PROFILE_SAMPLES)
         toPoints(sil, r, bodyPoints)
@@ -168,11 +173,11 @@ public class BotEngine(
         // a circle they are re-anchored proportionally to the local radius.
         val eyes = ArrayList<RenderedEye>(2)
         if (pose.eyeAlpha > 0.01f) {
-            val poses = eyePoses(gaze, r, pose.split)
+            val poses = eyePoses(gaze, r, louder(Face.EYE_SPLIT, pose.split))
             for (i in 0..1) {
                 val e = if (i == 0) poses.first else poses.second
                 if (e.depth <= 0.02f) continue
-                val cfg = if (i == 0) pose.eye0 else pose.eye1
+                val cfg = louder(if (i == 0) pose.eye0 else pose.eye1)
                 val fit = radiusAtAngle(pose.sil.radii, atan2(e.y, e.x) - pose.sil.rot)
                 // Own eye tilt: tangent frame composed with an in-plane rotation
                 // (Basis x Rot), enabling mirrored tilts between both eyes.
@@ -228,6 +233,30 @@ public class BotEngine(
         )
     }
 }
+
+/**
+ * Pushes a posed value further from its resting value: the whole expression
+ * knob, in one line.
+ *
+ * The states were measured off a reference video that plays everything very
+ * cool. That reads as flat on a phone, where the bot is often 42dp in a corner
+ * — so every departure from rest is amplified, and rest itself never moves.
+ */
+private fun louder(rest: Float, posed: Float, gain: Float = EXPRESSION_GAIN): Float =
+    rest + (posed - rest) * gain
+
+/** [louder] for a whole eye. Dimensions keep a floor so a squint stays a
+ *  squint instead of inverting into a line. */
+private fun louder(cfg: EyeCfg): EyeCfg = EyeCfg(
+    w = louder(Face.EYE_W, cfg.w).coerceAtLeast(Face.EYE_W * 0.15f),
+    h = louder(Face.EYE_H, cfg.h).coerceAtLeast(Face.EYE_H * 0.06f),
+    open = louder(1f, cfg.open).coerceIn(0f, 1f),
+    // Tilt is the loudest signal a capsule eye has, and the cheapest to read
+    // at small sizes, so it gets pushed hardest.
+    tilt = louder(0f, cfg.tilt, EXPRESSION_GAIN * 1.25f)
+)
+
+private const val EXPRESSION_GAIN = 1.4f
 
 /**
  * 1 while the profile is a circle of about the resting size, falling to 0 as it

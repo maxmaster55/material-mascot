@@ -18,9 +18,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-SHAPE = Path(__file__).resolve().parents[1] / (
-    "mascot/src/main/java/com/maxmaster/materialmascot/engine/EarShape.kt"
-)
+ENGINE = Path(__file__).resolve().parents[1] / "mascot/src/main/java/com/maxmaster/materialmascot/engine"
+SHAPE = ENGINE / "EarShape.kt"
 SAMPLES = 64                 # PROFILE_SAMPLES
 CAT_SAMPLES = 192            # MaterialBot.CAT_SAMPLES
 RADIUS_FRACTION = 100 / 158  # BotEngine.RADIUS_FRACTION
@@ -28,6 +27,7 @@ TIP_DAMP = 0.9               # EAR_TIP_DAMP
 PERK_MAX = 1.20              # EAR_PERK_MAX
 MELT = 0.13                  # EAR_MELT
 SPLAY_LIMIT = 12             # EAR_SPLAY_LIMIT
+SPREAD = 7                   # EAR_SPREAD
 
 
 def load_profile():
@@ -102,7 +102,7 @@ def silhouette(points, ballness, perk, splay):
         body_r = body_radius(points, a)
         off = (a - up + math.pi) % math.tau - math.pi
         pose = min(max(splay, -SPLAY_LIMIT), SPLAY_LIMIT)
-        deg = abs(off) * 180 / math.pi - pose
+        deg = abs(off) * 180 / math.pi - pose - SPREAD
         prof = ear_profile(deg)
         ear_r = 0.0 if prof <= 0 else body_r * (1 + (prof - 1) * stand)
         r = smooth_max(body_r, ear_r, body_r * MELT)
@@ -127,6 +127,30 @@ def check_fit():
         f"ears reach {got:.4f} ball radii > EAR_REACH {EAR_REACH:.4f} — "
         f"the fit no longer holds"
     )
+
+
+def check_ballness():
+    """Ears belong on a ball: every other silhouette the engine ships must lose
+    them, and the resting ball must keep them. Mirrors BotEngine.ballness."""
+    src = (ENGINE / "BotShape.kt").read_text()
+    kt = (ENGINE / "BotEngine.kt").read_text()
+    round_tol = float(re.search(r"BALL_ROUND_TOLERANCE = ([-+0-9.]+)f", kt).group(1))
+    size_tol = float(re.search(r"BALL_SIZE_TOLERANCE = ([-+0-9.]+)f", kt).group(1))
+
+    def ballness(r):
+        lo, hi, mean = min(r), max(r), sum(r) / len(r)
+        if mean < 1e-4:
+            return 0.0
+        return max(0.0, min(1.0, min(1 - ((hi - lo) / mean) / round_tol,
+                                     1 - (1 - min(mean, 1.0)) / size_tol)))
+
+    assert ballness([1.0] * 64) == 1.0, "the resting ball must keep its ears"
+    assert ballness([0.97] * 64) > 0.8, "breathing must not shed the ears"
+    for m in re.finditer(r"fun (\w+Profile)\(\): FloatArray = floatArrayOf\((.*?)\)", src, re.S):
+        name, body = m.group(1), m.group(2)
+        v = [float(x) for x in re.findall(r"([-+0-9.]+)f", body)]
+        got = ballness(v)
+        assert got < 0.25, f"{name} is not a ball but keeps ears (ballness {got:.2f})"
 
 
 def spline(pts, per_seg=4):
@@ -166,6 +190,7 @@ def main():
         print(round(reach(), 4))
         return
     check_fit()
+    check_ballness()
 
     size = args.size
     bg = "#111114"

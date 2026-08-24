@@ -161,7 +161,6 @@ public fun MaterialBot(
 
     val bodyPath = remember { Path() }
     val tearPath = remember { Path() }
-    val tearPath = remember { Path() }
     // The body outline with the ears merged into it, refilled every frame.
     val catPoints = remember { ArrayList<Offset>(CAT_SAMPLES) }
     val eyeSrcPath = remember { Path() }

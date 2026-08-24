@@ -397,7 +397,7 @@ internal fun fidget(ts: Float): Triple<Float, Float, Float> {
  * which wastes that: the bot reads as a flat face with jittering dots. Sweeping
  * wider is what makes the head read as a ball being looked around.
  */
-private const val GAZE_SWEEP = 2.3f
+private const val GAZE_SWEEP = 1.8f
 
 internal fun liveliness(
     t: Float,
