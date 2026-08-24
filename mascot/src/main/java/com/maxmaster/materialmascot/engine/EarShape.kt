@@ -120,22 +120,3 @@ internal const val EAR_RIGHT_PIVOT: Float = +0.9254f
 
 /** How high the traced pair reaches above its base, in pair-frame units. */
 internal const val EAR_TIP_Y: Float = 1.0673f
-
-/**
- * Index range of each ear's base curve: the stretch that was drawn to sit ON
- * the head, running from the outer bottom point to the inner corner. Everything
- * outside it is a flank — the part that shows.
- *
- * MaterialBot pins exactly this stretch deep inside the live body, so a splayed
- * pose can no longer swing the inner corner out and open daylight at the join.
- * The reference head is not this bot's silhouette at this pose, so the traced
- * curve cannot be trusted to land on the outline by itself.
- */
-private fun baseRange(shape: Array<Offset>): IntRange {
-    val outer = shape.indices.minByOrNull { shape[it].y }!!
-    val inner = shape.indices.minByOrNull { kotlin.math.abs(shape[it].x) }!!
-    return minOf(outer, inner)..maxOf(outer, inner)
-}
-
-internal val EAR_LEFT_BASE: IntRange = baseRange(EAR_LEFT)
-internal val EAR_RIGHT_BASE: IntRange = baseRange(EAR_RIGHT)

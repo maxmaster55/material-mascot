@@ -27,7 +27,6 @@ TIP_Y = 1.0673               # EAR_TIP_Y
 RADIUS_FRACTION = 100 / 158  # BotEngine.RADIUS_FRACTION
 TIP_DAMP = 0.9               # EAR_TIP_DAMP
 PERK_MAX = 1.20              # EAR_PERK_MAX
-BURY = 0.86                  # EAR_BURY
 
 
 def load(name, path=None):
@@ -63,64 +62,145 @@ def base_range(shape):
     return range(min(outer, inner), max(outer, inner) + 1)
 
 
-def ears(points, shapes, pivots, width, sink, splay, perk, bury, flare):
-    """The Kotlin frame math, line for line."""
+def map_ear(points, shape, pivot, width, sink, splay, perk, flare):
+    """MaterialBot.catSilhouette frame math, line for line."""
     n = len(points)
     crown = points[n * 3 // 4]
     length = max(math.hypot(*crown), 1e-3)
     ux, uy = crown[0] / length, crown[1] / length
     e1x, e1y = -uy * width, ux * width
     e2x, e2y = ux * width, uy * width
-
+    rad = math.radians(splay)
+    c, sn = math.cos(rad), math.sin(rad)
+    ox = crown[0] - ux * sink + e1x * pivot * (1 - c) - e2x * pivot * sn
+    oy = crown[1] - uy * sink + e1y * pivot * (1 - c) - e2y * pivot * sn
+    xx, xy = e1x * c + e2x * sn, e1y * c + e2y * sn
+    yx, yy = (-e1x * sn + e2x * c) * perk, (-e1y * sn + e2y * c) * perk
     out = []
+    for px, py in shape:
+        px = px * (1 + flare * (1 - min(max(py / TIP_Y, 0.0), 1.0)))
+        out.append((ox + xx * px + yx * py, oy + xy * px + yy * py))
+    return out
+
+
+def outline_radius(points, dx, dy):
+    best, best_dot = 0.0, -1e30
+    for x, y in points:
+        d = math.hypot(x, y)
+        if d > 1e-3:
+            dot = (x * dx + y * dy) / d
+            if dot > best_dot:
+                best_dot, best = dot, d
+    return best
+
+
+def inside(points, p):
+    d = math.hypot(*p)
+    return True if d < 1e-4 else d <= outline_radius(points, p[0] / d, p[1] / d)
+
+
+def crossing(points, a, b):
+    lo, hi = 0.0, 1.0
+    for _ in range(12):
+        t = (lo + hi) / 2
+        q = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+        if inside(points, q):
+            lo = t
+        else:
+            hi = t
+    t = (lo + hi) / 2
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+
+def angle_of(p):
+    a = math.atan2(p[1], p[0])
+    return a + math.tau if a < 0 else a
+
+
+def arc(frm, to):
+    d = to - frm
+    return d + math.tau if d < 0 else d
+
+
+def silhouette(points, shapes, pivots, width, sink, splay, perk, flare):
+    """The body outline with the ears spliced into it — one closed loop."""
+    runs = []
     for side, shape, pivot in ((-1, shapes[0], pivots[0]), (1, shapes[1], pivots[1])):
-        rad = math.radians(-side * splay)
-        c, sn = math.cos(rad), math.sin(rad)
-        ox = crown[0] - ux * sink + e1x * pivot * (1 - c) - e2x * pivot * sn
-        oy = crown[1] - uy * sink + e1y * pivot * (1 - c) - e2y * pivot * sn
-        xx, xy = e1x * c + e2x * sn, e1y * c + e2y * sn
-        yx, yy = (-e1x * sn + e2x * c) * perk, (-e1y * sn + e2y * c) * perk
-        frame = (ox, oy, xx, xy, yx, yy)
-        base = base_range(shape)
-        mapped = []
-        for i, (px, py) in enumerate(shape):
-            px *= 1 + flare * (1 - min(max(py / TIP_Y, 0.0), 1.0))   # base flare
-            x, y = ox + xx * px + yx * py, oy + xy * px + yy * py
-            d = math.hypot(x, y)
-            if i in base and d > bury:      # pinned inside the body
-                x, y = x * bury / d, y * bury / d
-            mapped.append((x, y))
-        out.append((mapped, frame))
+        ear = map_ear(points, shape, pivot, width, sink, -side * splay, perk, flare)
+        m = len(ear)
+        first = next((i + 1) % m for i in range(m)
+                     if inside(points, ear[i]) and not inside(points, ear[(i + 1) % m]))
+        if first is None:
+            continue
+        count = 0
+        while count < m and not inside(points, ear[(first + count) % m]):
+            count += 1
+        enter = crossing(points, ear[(first - 1) % m], ear[first])
+        leave = crossing(points, ear[(first + count - 1) % m], ear[(first + count) % m])
+        forward = arc(angle_of(enter), angle_of(leave)) < math.pi
+        run = [ear[(first + k) % m] for k in range(count)]
+        if not forward:
+            run.reverse()
+            enter, leave = leave, enter
+        runs.append((angle_of(enter), angle_of(leave), [enter] + run + [leave]))
+
+    out, done = [], [False] * len(runs)
+    n = len(points)
+    for i in range(n):
+        a, prev = angle_of(points[i]), angle_of(points[i - 1])
+        for r, (frm, to, run) in enumerate(runs):
+            if not done[r] and arc(prev, frm) <= arc(prev, a):
+                out.extend(run)
+                done[r] = True
+        if not any(arc(frm, a) <= arc(frm, to) for frm, to, _ in runs):
+            out.append(points[i])
+    for r, (_, _, run) in enumerate(runs):
+        if not done[r]:
+            out.extend(run)
+    return out
+
+
+def spline(pts, per_seg=8):
+    """buildBodyPath: a closed Catmull-Rom through the merged outline."""
+    n = len(pts)
+    out = []
+    for i in range(n):
+        p0, p1, p2, p3 = (pts[(i - 1) % n], pts[i], pts[(i + 1) % n], pts[(i + 2) % n])
+        c1 = (p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6)
+        c2 = (p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6)
+        for k in range(per_seg):
+            t = k / per_seg
+            u = 1 - t
+            out.append((
+                u**3 * p1[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t**3 * p2[0],
+                u**3 * p1[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t**3 * p2[1],
+            ))
     return out
 
 
 # MaterialBot.EAR_REACH: how far the eared silhouette stands from the centre,
-# in ball radii, worst case over the pose corners. Measured with reach(), which
-# is why check_fit() below is an assertion and not a comment.
+# in ball radii, worst case over the pose corners.
 EAR_REACH = 1.62
 
 
 def cat_fit():
-    """MaterialBot.CAT_FIT: shrink until the ears fit the earless footprint."""
     return 1 / EAR_REACH
 
 
-def reach(shapes, pivots, width, sink, flare, bury):
-    """Worst-case distance from the body centre to any ear point, in ball radii."""
+def reach(shapes, pivots, width, sink, flare):
     pts = body_points(1.0)
     r = RADIUS_FRACTION
     worst = 0.0
     for perk in (0.76, 1.0, PERK_MAX):
         for splay in (-12.0, 0.0, 12.0):
-            for mapped, _ in ears(pts, shapes, pivots, r * width, r * sink,
-                                  splay, perk * TIP_DAMP, r * bury, flare):
-                worst = max(worst, max(math.hypot(x, y) for x, y in mapped))
+            merged = silhouette(pts, shapes, pivots, r * width, r * sink,
+                                splay, perk * TIP_DAMP, flare)
+            worst = max(worst, max(math.hypot(x, y) for x, y in merged))
     return worst / r
 
 
-def check_fit(shapes, pivots, width, sink, flare, bury):
-    """No pose may push any part of an ear past the earless bot's footprint."""
-    got = reach(shapes, pivots, width, sink, flare, bury)
+def check_fit(shapes, pivots, width, sink, flare):
+    got = reach(shapes, pivots, width, sink, flare)
     assert got <= EAR_REACH + 1e-4, (
         f"ears reach {got:.4f} ball radii > EAR_REACH {EAR_REACH} — "
         f"raise EAR_REACH in MaterialBot.kt and here, or pull the ears in"
@@ -135,7 +215,6 @@ def main():
     ap.add_argument("--perk", type=float, default=1.0, help="pose length multiplier")
     ap.add_argument("--shape", help="read the points from this .kt instead of EarShape.kt")
     ap.add_argument("--flare", type=float, default=0.20, help="EAR_BASE_FLARE")
-    ap.add_argument("--bury", type=float, default=BURY, help="EAR_BURY")
     ap.add_argument("--outline", action="store_true", help="line art, as MascotFinish.OUTLINE draws")
     ap.add_argument("--reach", action="store_true", help="print the measured reach and exit")
     ap.add_argument("--size", type=int, default=420)
@@ -145,9 +224,9 @@ def main():
     shapes = (load("EAR_LEFT", args.shape), load("EAR_RIGHT", args.shape))
     pivots = (load_const("EAR_LEFT_PIVOT", args.shape), load_const("EAR_RIGHT_PIVOT", args.shape))
     if args.reach:
-        print(round(reach(shapes, pivots, args.width, args.sink, args.flare, args.bury), 4))
+        print(round(reach(shapes, pivots, args.width, args.sink, args.flare), 4))
         return
-    check_fit(shapes, pivots, args.width, args.sink, args.flare, args.bury)
+    check_fit(shapes, pivots, args.width, args.sink, args.flare)
 
     size = args.size
     bg = "#111114"
@@ -157,33 +236,25 @@ def main():
     img = Image.new("RGB", (canvas, canvas), bg)
     d = ImageDraw.Draw(img)
     cx = cy = canvas / 2
-    # What the app does: cat mode draws the bot at CAT_FIT so the tips land
-    # where the earless crown would.
     draw_px = size * cat_fit()
     r = draw_px * RADIUS_FRACTION
     fill = "#F2F0E9"
 
     pts = body_points(draw_px)
-    drawn = ears(
-        pts, shapes, pivots, r * args.width, r * args.sink,
-        args.splay, args.perk * TIP_DAMP, r * args.bury, args.flare,
-    )
+    merged = silhouette(pts, shapes, pivots, r * args.width, r * args.sink,
+                        args.splay, args.perk * TIP_DAMP, args.flare)
+    poly = [(cx + x, cy + y) for x, y in spline(merged)]
+
     # The footprint the host padded for: the earless ball at the full size.
     plain = size * RADIUS_FRACTION
     d.ellipse([cx - plain, cy - plain, cx + plain, cy + plain], outline="#3A3A44", width=1)
-    d.rectangle([cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2], outline="#2A2A32", width=1)
+    d.rectangle([cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2],
+                outline="#2A2A32", width=1)
 
-    # Ears first, body over the bases: the same order MaterialBot draws in.
     if args.outline:
-        for ear, _ in drawn:
-            d.polygon([(cx + x, cy + y) for x, y in ear], outline=fill, width=5)
-        # Stand-in for clipPath(body, Difference): erase what fell inside.
-        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=bg)
-        d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=fill, width=5)
+        d.polygon(poly, outline=fill, width=5)
     else:
-        for ear, _ in drawn:
-            d.polygon([(cx + x, cy + y) for x, y in ear], fill=fill)
-        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=fill)
+        d.polygon(poly, fill=fill)
         eye = r * 0.22
         for sx in (-1, 1):
             ex, ey = cx + sx * r * 0.30, cy + r * 0.10

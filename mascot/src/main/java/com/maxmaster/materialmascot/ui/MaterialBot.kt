@@ -34,7 +34,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
@@ -51,9 +50,7 @@ import com.maxmaster.materialmascot.engine.BotEngine
 import com.maxmaster.materialmascot.engine.BotState
 import com.maxmaster.materialmascot.engine.DotSpec
 import com.maxmaster.materialmascot.engine.EAR_LEFT
-import com.maxmaster.materialmascot.engine.EAR_LEFT_BASE
 import com.maxmaster.materialmascot.engine.EAR_RIGHT
-import com.maxmaster.materialmascot.engine.EAR_RIGHT_BASE
 import com.maxmaster.materialmascot.engine.EAR_LEFT_PIVOT
 import com.maxmaster.materialmascot.engine.EAR_RIGHT_PIVOT
 import com.maxmaster.materialmascot.engine.EAR_TIP_Y
@@ -165,6 +162,11 @@ public fun MaterialBot(
 
     val bodyPath = remember { Path() }
     val earPath = remember { Path() }
+    val tearPath = remember { Path() }
+    // The body outline with the ears merged into it, refilled every frame.
+    val catPoints = remember { ArrayList<Offset>(96) }
+    val catSplice = remember { ArrayList<Offset>(EAR_LEFT.size + 4) }
+    val earXy = remember { FloatArray(EAR_LEFT.size * 2) }
     val eyeSrcPath = remember { Path() }
     val eyeDstPath = remember { Path() }
     val eyeMatrix = remember { android.graphics.Matrix() }
@@ -197,42 +199,27 @@ public fun MaterialBot(
         // same ink as the stroke.
         val inkColor = if (outline) config.color else config.eyeColor
         translate(this.center.x, this.center.y) {
-            // Behind the body, and sunk deep: the body silhouette is drawn on
-            // top of the ear bases, so no pose, morph or squash can ever open
-            // daylight at the join — the old over-the-body placement relied on
-            // the base curve landing exactly on the outline, and lifted off
-            // whenever the pose rotated.
-            if (config.cat) {
+            val silhouette = if (config.cat) {
                 val twitch = if (config.motion) earTwitch(frameMs, config.energy) else 0f
-                val ears: DrawScope.() -> Unit = {
-                    drawCatEars(
-                        points = frame.bodyPoints,
-                        color = config.color,
-                        chrome = chrome,
-                        outline = outline,
-                        sizePx = drawPx,
-                        perk = earPerk,
-                        splayDeg = earSplay,
-                        twitchDeg = twitch,
-                        twitchSide = twitchSide(frameMs),
-                        path = earPath
-                    )
-                }
-                if (outline) {
-                    // Line art has no fill to hide the sunk base curve, so the
-                    // ear would read as a shape lying loose on the head. Clip
-                    // it to outside the body outline: what is left is exactly
-                    // the ear above the head, ending on the outline.
-                    buildBodyPath(frame.bodyPoints, bodyPath)
-                    clipPath(bodyPath, ClipOp.Difference) { ears() }
-                } else {
-                    ears()
-                }
+                catSilhouette(
+                    points = frame.bodyPoints,
+                    sizePx = drawPx,
+                    perk = earPerk,
+                    splayDeg = earSplay,
+                    twitchDeg = twitch,
+                    twitchSide = twitchSide(frameMs),
+                    xy = earXy,
+                    splice = catSplice,
+                    out = catPoints
+                )
+            } else {
+                frame.bodyPoints
             }
+            buildBodyPath(silhouette, bodyPath)
             when {
-                chrome != null -> drawChromeBody(frame.bodyPoints, chrome, bodyPath)
-                outline -> drawOutlineBody(frame.bodyPoints, config.color, drawPx, bodyPath)
-                else -> drawBody(frame.bodyPoints, config.color, bodyPath)
+                chrome != null -> drawChromeBody(bodyPath, chrome)
+                outline -> drawOutlineBody(bodyPath, config.color, drawPx)
+                else -> drawBody(bodyPath, config.color)
             }
             if (frame.arcs.isNotEmpty()) {
                 val ballR = drawPx * BotEngine.RADIUS_FRACTION
@@ -246,7 +233,7 @@ public fun MaterialBot(
                     )
                 }
             }
-            frame.dots.forEach { drawDot(it, config.color, inkColor, drawPx, bodyPath) }
+            frame.dots.forEach { drawDot(it, config.color, inkColor, drawPx, tearPath) }
             frame.eyes.forEach {
                 drawEye(
                     it, inkColor, eyeSrcPath, eyeDstPath, eyeMatrix,
@@ -321,9 +308,7 @@ private class ChromeBrushes(color: Color, eyeColor: Color, sizePx: Float) {
 }
 
 /** Same silhouette as [drawBody], painted with depth instead of one flat fill. */
-private fun DrawScope.drawChromeBody(points: List<Offset>, chrome: ChromeBrushes, path: Path) {
-    if (points.size < 3) return
-    buildBodyPath(points, path)
+private fun DrawScope.drawChromeBody(path: Path, chrome: ChromeBrushes) {
     drawOval(brush = chrome.shadow, topLeft = chrome.shadowTopLeft, size = chrome.shadowSize)
     drawPath(path = path, brush = chrome.body)
     drawPath(path = path, brush = chrome.rim, style = Stroke(width = chrome.rimWidth))
@@ -334,13 +319,10 @@ private fun DrawScope.drawChromeBody(points: List<Offset>, chrome: ChromeBrushes
 
 /** [MascotFinish.OUTLINE]: the same silhouette as a stroke, with no fill. */
 private fun DrawScope.drawOutlineBody(
-    points: List<Offset>,
+    path: Path,
     color: Color,
-    sizePx: Float,
-    path: Path
+    sizePx: Float
 ) {
-    if (points.size < 3) return
-    buildBodyPath(points, path)
     drawPath(
         path = path,
         color = color,
@@ -349,15 +331,14 @@ private fun DrawScope.drawOutlineBody(
     )
 }
 
-private fun DrawScope.drawBody(points: List<Offset>, color: Color, path: Path) {
-    if (points.size < 3) return
-    buildBodyPath(points, path)
+private fun DrawScope.drawBody(path: Path, color: Color) {
     drawPath(path = path, color = color)
 }
 
 /** Catmull-Rom style closed spline through the sampled silhouette points. */
 private fun buildBodyPath(points: List<Offset>, path: Path) {
     val n = points.size
+    if (n < 3) return
     path.reset()
     path.moveTo(points[0].x, points[0].y)
     for (i in 0 until n) {
@@ -459,59 +440,6 @@ private const val TWITCH_MS = 260f
 private fun mix(a: Offset, b: Offset, t: Float) =
     Offset(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
 
-/**
- * Draws one traced shape through a base frame, as a closed Catmull-Rom spline.
- *
- * The frame is two vectors: [xx]/[xy] spans the base (local x = +-1 lands on
- * the two base corners) and [yx]/[yy] rises toward the tip. Points are mapped
- * as they are consumed, so a 40-point shape costs no allocation per frame.
- */
-private fun tracedPath(
-    shape: Array<Offset>,
-    ox: Float, oy: Float,
-    xx: Float, xy: Float,
-    yx: Float, yy: Float,
-    path: Path,
-    base: IntRange,
-    buryLen: Float
-) {
-    val n = shape.size
-    fun at(i: Int): Offset {
-        val k = ((i % n) + n) % n
-        val p = shape[k]
-        // The ear flares toward its base: the traced tip is what reads as cat,
-        // the bottom is what reads as attached, so the lower it goes the wider
-        // it gets.
-        val flare = 1f + EAR_BASE_FLARE * (1f - (p.y / EAR_TIP_Y).coerceIn(0f, 1f))
-        val px = p.x * flare
-        val x = ox + xx * px + yx * p.y
-        val y = oy + xy * px + yy * p.y
-        // Base points are pinned inside the body, never merely placed near it:
-        // the drawing origin IS the body centre here, so one clamp on the
-        // radius holds at every pose rotation and morph.
-        if (k in base) {
-            val d = kotlin.math.hypot(x, y)
-            if (d > buryLen) return Offset(x * buryLen / d, y * buryLen / d)
-        }
-        return Offset(x, y)
-    }
-    path.reset()
-    val first = at(0)
-    path.moveTo(first.x, first.y)
-    for (i in 0 until n) {
-        val a = at(i - 1)
-        val b = at(i)
-        val c = at(i + 1)
-        val d = at(i + 2)
-        path.cubicTo(
-            b.x + (c.x - a.x) / 6f, b.y + (c.y - a.y) / 6f,
-            c.x - (d.x - b.x) / 6f, c.y - (d.y - b.y) / 6f,
-            c.x, c.y
-        )
-    }
-    path.close()
-}
-
 /** Half-span of the traced ear pair, in head radii. Kept modest so the ears
  *  read as a quiet accent on the silhouette, not a second character. */
 private const val EAR_WIDTH = 0.74f
@@ -528,14 +456,6 @@ private const val EAR_PERK_MAX = 1.20f
  *  nothing at the tip. Broadens the part that shows above the head without
  *  turning the tip blunt. */
 private const val EAR_BASE_FLARE = 0.20f
-
-/**
- * How deep the ear base is pinned inside the body, as a fraction of the ball
- * radius. Anything closer to the edge can be swung back into view by a splayed
- * pose; at this depth no flare, rotation or squash lifts it out. It sits under
- * the body paint (and is clipped away in line art), so it costs nothing.
- */
-private const val EAR_BURY = 0.86f
 
 /** How far the ear bases sit below the crown, in head radii. Deep enough that the body swallows the base curve at every pose, shallow enough that a good stretch of ear still shows. */
 private const val EAR_SINK = 0.45f
@@ -555,41 +475,39 @@ private const val EAR_REACH = 1.62f
 private const val CAT_FIT = 1f / EAR_REACH
 
 /**
- * Two ears at the crown, from the measured pair in [EAR_LEFT] / [EAR_RIGHT].
+ * The body outline with the ears merged into it, as one list of points.
  *
- * The pair is placed as one piece, in the orientation it was traced at, so the
- * ears keep the lean and spacing they were drawn with. The frame is rebuilt
- * every frame from the crown of the live body outline — position and outward
- * normal both — so the ears ride whatever squash, stretch or morph the current
- * state is in. Because the caller paints the body OVER the ear bases — or, in
- * line art, clips this drawing to outside the body outline — the join is
- * always hidden: attachment no longer depends on the base curve landing
- * exactly on the outline.
+ * An ear painted as its own shape reads as a shape stuck on the head: wherever
+ * its outline crosses the body's, the union leaves a corner, and a corner is
+ * what looks rigid. So the ear is never a separate shape — the stretch of it
+ * that stands outside the body replaces the stretch of body outline it covers,
+ * and [buildBodyPath] splines the result. A spline through points has no
+ * corners, so the ear flows out of the head and back into it, and every finish,
+ * clip and fill downstream sees one silhouette.
  *
- * One shape per ear, in the body's own paint: a silhouette accent, not a
- * second character with its own colours.
+ * The junctions are the exact crossing points, interpolated, so the seam sits
+ * on the outline rather than near it.
  */
-private fun DrawScope.drawCatEars(
+private fun catSilhouette(
     points: List<Offset>,
-    color: Color,
-    chrome: ChromeBrushes?,
-    outline: Boolean,
     sizePx: Float,
     perk: Float,
     splayDeg: Float,
     twitchDeg: Float,
     twitchSide: Int,
-    path: Path
-) {
+    xy: FloatArray,
+    splice: ArrayList<Offset>,
+    out: ArrayList<Offset>
+): List<Offset> {
     val n = points.size
-    if (n < 8) return
+    if (n < 8) return points
     val ballR = sizePx * BotEngine.RADIUS_FRACTION
     val half = ballR * EAR_WIDTH
     val sink = ballR * EAR_SINK
 
     val crown = points[n * 3 / 4]
     val crownLen = kotlin.math.hypot(crown.x, crown.y)
-    if (crownLen < 1e-3f) return
+    if (crownLen < 1e-3f) return points
     // Outward at the crown, and its perpendicular: the pair's up and right.
     val ux = crown.x / crownLen
     val uy = crown.y / crownLen
@@ -598,35 +516,156 @@ private fun DrawScope.drawCatEars(
     val e2x = ux * half
     val e2y = uy * half
 
+    out.clear()
+    // Each ear becomes a run of points to splice in, plus the arc of body
+    // outline it replaces. Two runs, kept flat to avoid per-frame garbage.
+    var runs = 0
+    val runFrom = FloatArray(2)
+    val runTo = FloatArray(2)
+    val runStart = IntArray(2)
+    val runEnd = IntArray(2)
+    splice.clear()
+
     for (side in intArrayOf(-1, 1)) {
         val shape = if (side < 0) EAR_LEFT else EAR_RIGHT
-        val base = if (side < 0) EAR_LEFT_BASE else EAR_RIGHT_BASE
         val pivot = if (side < 0) EAR_LEFT_PIVOT else EAR_RIGHT_PIVOT
         val pose = (splayDeg + (if (side == twitchSide) twitchDeg else 0f))
             .coerceIn(-EAR_SPLAY_LIMIT, EAR_SPLAY_LIMIT)
-        val deg = -side * pose
-        val rad = deg * PI.toFloat() / 180f
+        val rad = -side * pose * PI.toFloat() / 180f
         val c = cos(rad)
         val sn = sin(rad)
 
         val ox = crown.x - ux * sink + e1x * pivot * (1f - c) - e2x * pivot * sn
         val oy = crown.y - uy * sink + e1y * pivot * (1f - c) - e2y * pivot * sn
         val xx = e1x * c + e2x * sn
-        val xy = e1y * c + e2y * sn
+        val xy2 = e1y * c + e2y * sn
         val yx = (-e1x * sn + e2x * c) * perk * EAR_TIP_DAMP
         val yy = (-e1y * sn + e2y * c) * perk * EAR_TIP_DAMP
 
-        tracedPath(shape, ox, oy, xx, xy, yx, yy, path, base, ballR * EAR_BURY)
-        when {
-            outline -> drawPath(
-                path = path,
-                color = color,
-                style = Stroke(width = ballR * 0.06f, cap = StrokeCap.Round)
-            )
-            chrome != null -> drawPath(path, brush = chrome.body)
-            else -> drawPath(path, color = color)
+        val m = shape.size
+        for (i in 0 until m) {
+            val p = shape[i]
+            // The ear flares toward its base: the traced tip is what reads as
+            // cat, the bottom is what reads as attached.
+            val flare = 1f + EAR_BASE_FLARE * (1f - (p.y / EAR_TIP_Y).coerceIn(0f, 1f))
+            val px = p.x * flare
+            xy[i * 2] = ox + xx * px + yx * p.y
+            xy[i * 2 + 1] = oy + xy2 * px + yy * p.y
+        }
+        // Walk the ear looking for the one run that stands outside the body.
+        var first = -1
+        for (i in 0 until m) {
+            val inside = insideBody(points, xy[i * 2], xy[i * 2 + 1])
+            val nextOut = !insideBody(points, xy[((i + 1) % m) * 2], xy[((i + 1) % m) * 2 + 1])
+            if (inside && nextOut) {
+                first = (i + 1) % m
+                break
+            }
+        }
+        if (first < 0) continue          // wholly buried: nothing to splice
+        var count = 0
+        while (count < m &&
+            !insideBody(points, xy[((first + count) % m) * 2], xy[((first + count) % m) * 2 + 1])
+        ) {
+            count++
+        }
+        val enter = crossing(points, xy, (first - 1 + m) % m, first)
+        val leave = crossing(points, xy, (first + count - 1) % m, (first + count) % m)
+        val aEnter = angleOf(enter)
+        val aLeave = angleOf(leave)
+        // The run has to read in the body's own winding direction.
+        val forward = arcLength(aEnter, aLeave) < PI.toFloat()
+        runStart[runs] = splice.size
+        splice.add(if (forward) enter else leave)
+        for (k in 0 until count) {
+            val i = (if (forward) first + k else first + count - 1 - k) % m
+            splice.add(Offset(xy[i * 2], xy[i * 2 + 1]))
+        }
+        splice.add(if (forward) leave else enter)
+        runEnd[runs] = splice.size
+        runFrom[runs] = if (forward) aEnter else aLeave
+        runTo[runs] = if (forward) aLeave else aEnter
+        runs++
+    }
+    if (runs == 0) return points
+
+    val emitted = BooleanArray(runs)
+    for (i in 0 until n) {
+        val a = angleOf(points[i])
+        val prev = angleOf(points[(i - 1 + n) % n])
+        for (r in 0 until runs) {
+            // Splice the ear in as soon as the outline reaches where it starts.
+            if (!emitted[r] && arcLength(prev, runFrom[r]) <= arcLength(prev, a)) {
+                for (k in runStart[r] until runEnd[r]) out.add(splice[k])
+                emitted[r] = true
+            }
+        }
+        var covered = false
+        for (r in 0 until runs) {
+            if (arcLength(runFrom[r], a) <= arcLength(runFrom[r], runTo[r])) covered = true
+        }
+        if (!covered) out.add(points[i])
+    }
+    for (r in 0 until runs) {
+        if (!emitted[r]) for (k in runStart[r] until runEnd[r]) out.add(splice[k])
+    }
+    return out
+}
+
+/** Is (x, y) inside the sampled silhouette? Compared along its own direction,
+ *  which is exact for the radial profiles this engine draws. */
+private fun insideBody(points: List<Offset>, x: Float, y: Float): Boolean {
+    val len = kotlin.math.hypot(x, y)
+    if (len < 1e-4f) return true
+    return len <= outlineRadius(points, x / len, y / len)
+}
+
+/** Distance from the centre to the sampled outline in direction (dx, dy). */
+private fun outlineRadius(points: List<Offset>, dx: Float, dy: Float): Float {
+    // ponytail: linear scan of 64 samples; index by angle if it ever shows up
+    // in a frame trace.
+    var bestDot = -Float.MAX_VALUE
+    var best = 0f
+    points.forEach { p ->
+        val len = kotlin.math.hypot(p.x, p.y)
+        if (len > 1e-3f) {
+            val dot = (p.x * dx + p.y * dy) / len
+            if (dot > bestDot) {
+                bestDot = dot
+                best = len
+            }
         }
     }
+    return best
+}
+
+/** Where the ear outline crosses the body outline, between two of its points. */
+private fun crossing(points: List<Offset>, xy: FloatArray, i: Int, j: Int): Offset {
+    var lo = 0f
+    var hi = 1f
+    val ax = xy[i * 2]
+    val ay = xy[i * 2 + 1]
+    val bx = xy[j * 2]
+    val by = xy[j * 2 + 1]
+    repeat(12) {
+        val t = (lo + hi) / 2f
+        val x = ax + (bx - ax) * t
+        val y = ay + (by - ay) * t
+        if (insideBody(points, x, y)) lo = t else hi = t
+    }
+    val t = (lo + hi) / 2f
+    return Offset(ax + (bx - ax) * t, ay + (by - ay) * t)
+}
+
+private fun angleOf(p: Offset): Float {
+    val a = kotlin.math.atan2(p.y, p.x)
+    return if (a < 0f) a + 2f * PI.toFloat() else a
+}
+
+/** Distance from angle [from] to angle [to], going the way the outline runs. */
+private fun arcLength(from: Float, to: Float): Float {
+    val d = to - from
+    return if (d < 0f) d + 2f * PI.toFloat() else d
 }
 
 private fun DrawScope.drawEye(
