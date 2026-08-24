@@ -55,6 +55,8 @@ public enum class MascotFinish {
  * @param eyeStyle Eye shape personality transform. Default: [EyeStyle.CLASSIC].
  * @param finish How the body is painted. Default [MascotFinish.FLAT], which
  *               renders identically to before this option existed.
+ * @param cat Cat look: pointed ears on the crown, posed by the current state.
+ *            Rides on top of any finish and eye style. Default: false.
  */
 @Immutable
 public data class MascotConfig(
@@ -67,5 +69,6 @@ public data class MascotConfig(
     public val motion: Boolean = true,
     public val energy: Float = 1.9f,
     public val eyeStyle: EyeStyle = EyeStyle.CLASSIC,
-    public val finish: MascotFinish = MascotFinish.FLAT
+    public val finish: MascotFinish = MascotFinish.FLAT,
+    public val cat: Boolean = false
 )

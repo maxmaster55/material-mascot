@@ -293,8 +293,11 @@ MascotConfig(finish = MascotFinish.OUTLINE, color = MaterialTheme.colorScheme.on
 | `energy` | `Float` | `1.9f` | Liveliness multiplier: `1.0` = measured calm of the reference video, `~1.6` = cheerful and active. Scales gaze drift speed, blink cadence, breathing and floating amplitude. Clamped to `0.5..2.5`. |
 | `eyeStyle` | `EyeStyle` | `EyeStyle.CLASSIC` | Eye shape personality transform. |
 | `finish` | `MascotFinish` | `MascotFinish.FLAT` | How the body is painted. `FLAT` renders identically to before this option existed. |
+| `cat` | `Boolean` | `false` | Cat look: pointed ears on the crown, posed and twitching with the state. Rides on top of any finish and eye style. |
 
 `size` is the layout box the composable occupies. The ball itself is drawn with radius `size * 100/158` around the centre — roughly 1.27x the box across — and is not clipped, so leave padding around a bot that sits next to other content.
+
+`cat = true` keeps that same footprint: the ears reach above the crown, so the whole drawing is scaled down until the tips land where the earless crown would. The bot is a little smaller with ears on, and no layout has to change to fit them.
 
 ## MaterialBot
 

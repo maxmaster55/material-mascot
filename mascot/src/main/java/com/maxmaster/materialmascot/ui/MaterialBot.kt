@@ -6,6 +6,8 @@
 
 package com.maxmaster.materialmascot.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.size
@@ -30,7 +32,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
@@ -46,6 +50,11 @@ import com.maxmaster.materialmascot.config.MascotFinish
 import com.maxmaster.materialmascot.engine.BotEngine
 import com.maxmaster.materialmascot.engine.BotState
 import com.maxmaster.materialmascot.engine.DotSpec
+import com.maxmaster.materialmascot.engine.EAR_LEFT
+import com.maxmaster.materialmascot.engine.EAR_RIGHT
+import com.maxmaster.materialmascot.engine.EAR_LEFT_PIVOT
+import com.maxmaster.materialmascot.engine.EAR_RIGHT_PIVOT
+import com.maxmaster.materialmascot.engine.EAR_TIP_Y
 import com.maxmaster.materialmascot.engine.NOTIF_BLUE
 import com.maxmaster.materialmascot.engine.RenderedEye
 import com.maxmaster.materialmascot.engine.TEAR_POINTS
@@ -83,6 +92,10 @@ public fun MaterialBot(
     if (!config.enabled) return
 
     val sizePx = with(LocalDensity.current) { config.size.toPx() }
+    // Ears reach above the crown, so cat mode draws the whole bot smaller: the
+    // eared silhouette then occupies exactly the footprint the earless one
+    // does, and every host's margin and padding around `size` still holds.
+    val drawPx = if (config.cat) sizePx * CAT_FIT else sizePx
 
     var frameMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
@@ -114,6 +127,21 @@ public fun MaterialBot(
         }
     }
 
+    // Ears read the mood: perked and forward when alert or pleased, splayed
+    // and low when sleepy or sad. Animated rather than snapped so they arrive
+    // with the body morph instead of popping ahead of it.
+    val earPose = earPoseFor(shownState)
+    val earPerk by animateFloatAsState(
+        targetValue = if (config.cat) earPose.perk else 1f,
+        animationSpec = tween(durationMillis = 420),
+        label = "earPerk"
+    )
+    val earSplay by animateFloatAsState(
+        targetValue = if (config.cat) earPose.splay else 0f,
+        animationSpec = tween(durationMillis = 420),
+        label = "earSplay"
+    )
+
     val canvasModifier = if (contentDescription != null) {
         modifier
             .size(config.size)
@@ -127,13 +155,14 @@ public fun MaterialBot(
     // Every gradient is derived from the configured colors and the canvas size,
     // so it is built once per palette change — never per frame, which is what
     // drawing at display refresh rate demands.
-    val chrome = remember(config.color, config.eyeColor, sizePx, config.finish) {
+    val chrome = remember(config.color, config.eyeColor, drawPx, config.finish) {
         if (config.finish == MascotFinish.CHROME) {
-            ChromeBrushes(config.color, config.eyeColor, sizePx)
+            ChromeBrushes(config.color, config.eyeColor, drawPx)
         } else null
     }
 
     val bodyPath = remember { Path() }
+    val earPath = remember { Path() }
     val eyeSrcPath = remember { Path() }
     val eyeDstPath = remember { Path() }
     val eyeMatrix = remember { android.graphics.Matrix() }
@@ -155,7 +184,7 @@ public fun MaterialBot(
         // whole composable at display refresh rate.
         val frame = engine.sample(
             nowMs = frameMs,
-            scalePx = sizePx,
+            scalePx = drawPx,
             reducedMotion = !config.motion,
             energy = config.energy,
             eyeStyle = config.eyeStyle
@@ -166,17 +195,45 @@ public fun MaterialBot(
         // same ink as the stroke.
         val inkColor = if (outline) config.color else config.eyeColor
         translate(this.center.x, this.center.y) {
+            // Behind the body, and sunk deep: the body silhouette is drawn on
+            // top of the ear bases, so no pose, morph or squash can ever open
+            // daylight at the join — the old over-the-body placement relied on
+            // the base curve landing exactly on the outline, and lifted off
+            // whenever the pose rotated.
+            if (config.cat) {
+                val twitch = if (config.motion) earTwitch(frameMs, config.energy) else 0f
+                val ears: DrawScope.() -> Unit = {
+                    drawCatEars(
+                        points = frame.bodyPoints,
+                        color = config.color,
+                        chrome = chrome,
+                        outline = outline,
+                        sizePx = drawPx,
+                        perk = earPerk,
+                        splayDeg = earSplay,
+                        twitchDeg = twitch,
+                        twitchSide = twitchSide(frameMs),
+                        path = earPath
+                    )
+                }
+                if (outline) {
+                    // Line art has no fill to hide the sunk base curve, so the
+                    // ear would read as a shape lying loose on the head. Clip
+                    // it to outside the body outline: what is left is exactly
+                    // the ear above the head, ending on the outline.
+                    buildBodyPath(frame.bodyPoints, bodyPath)
+                    clipPath(bodyPath, ClipOp.Difference) { ears() }
+                } else {
+                    ears()
+                }
+            }
             when {
                 chrome != null -> drawChromeBody(frame.bodyPoints, chrome, bodyPath)
-                outline -> drawOutlineBody(frame.bodyPoints, config.color, sizePx, bodyPath)
+                outline -> drawOutlineBody(frame.bodyPoints, config.color, drawPx, bodyPath)
                 else -> drawBody(frame.bodyPoints, config.color, bodyPath)
             }
-            // Swirl and Orbit build these rings, but nothing ever painted
-            // them — both states rendered as a plain resting ball. The engine
-            // scales arc centres to pixels and leaves radius and stroke in
-            // ball-radius units, so they are converted here.
             if (frame.arcs.isNotEmpty()) {
-                val ballR = sizePx * BotEngine.RADIUS_FRACTION
+                val ballR = drawPx * BotEngine.RADIUS_FRACTION
                 frame.arcs.forEach { arc ->
                     drawCircle(
                         color = inkColor,
@@ -187,7 +244,7 @@ public fun MaterialBot(
                     )
                 }
             }
-            frame.dots.forEach { drawDot(it, config.color, inkColor, sizePx, bodyPath) }
+            frame.dots.forEach { drawDot(it, config.color, inkColor, drawPx, bodyPath) }
             frame.eyes.forEach {
                 drawEye(
                     it, inkColor, eyeSrcPath, eyeDstPath, eyeMatrix,
@@ -349,6 +406,188 @@ private fun DrawScope.drawDot(
     }
     path.close()
     drawPath(path = path, color = color, alpha = dot.alpha)
+}
+
+/**
+ * How far an ear may rotate. With the body painted over the bases the join
+ * can no longer open, so this is a pose-sanity bound now: beyond it the ears
+ * would read as antennae rather than ears.
+ */
+private const val EAR_SPLAY_LIMIT = 12f
+
+/** How an ear sits: tip length multiplier, and outward rotation in degrees. */
+private class EarPose(val perk: Float, val splay: Float)
+
+/**
+ * Cat body language, mapped onto the bot's states: forward and tall when
+ * something has its attention, splayed and low when it is winding down.
+ */
+private fun earPoseFor(state: BotState): EarPose = when (state) {
+    BotState.Alert, BotState.Exclaim, BotState.Notify -> EarPose(EAR_PERK_MAX, -8f)
+    BotState.Listening -> EarPose(1.10f, -5f)
+    BotState.Greet -> EarPose(1.14f, -4f)
+    BotState.Happy, BotState.Smile, BotState.Proud, BotState.Love -> EarPose(1.12f, -3f)
+    BotState.Responding, BotState.Narrating -> EarPose(1.03f, -1f)
+    BotState.Working, BotState.Reading -> EarPose(1.0f, 2f)
+    BotState.Thinking -> EarPose(0.97f, 5f)
+    BotState.Confused -> EarPose(0.93f, 8f)
+    BotState.Silly, BotState.Play, BotState.Swirl -> EarPose(1.08f, 9f)
+    BotState.Sleepy -> EarPose(0.80f, 10f)
+    BotState.Sad -> EarPose(0.76f, EAR_SPLAY_LIMIT)
+    else -> EarPose(1f, 0f)
+}
+
+/** Which ear flicks this cycle; they take turns. */
+private fun twitchSide(nowMs: Long): Int =
+    if ((nowMs / TWITCH_PERIOD_MS) % 2L == 0L) -1 else 1
+
+/**
+ * The idle ear flick — a real cat never holds an ear perfectly still, and one
+ * quick twitch every few seconds is what sells the bot as awake.
+ */
+private fun earTwitch(nowMs: Long, energy: Float): Float {
+    val phase = (nowMs % TWITCH_PERIOD_MS).toFloat()
+    if (phase > TWITCH_MS) return 0f
+    return sin(phase / TWITCH_MS * PI.toFloat()) * 4f * energy.coerceIn(0.5f, 2f)
+}
+
+private const val TWITCH_PERIOD_MS = 5200L
+private const val TWITCH_MS = 260f
+
+private fun mix(a: Offset, b: Offset, t: Float) =
+    Offset(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
+
+/**
+ * Draws one traced shape through a base frame, as a closed Catmull-Rom spline.
+ *
+ * The frame is two vectors: [xx]/[xy] spans the base (local x = +-1 lands on
+ * the two base corners) and [yx]/[yy] rises toward the tip. Points are mapped
+ * as they are consumed, so a 40-point shape costs no allocation per frame.
+ */
+private fun tracedPath(
+    shape: Array<Offset>,
+    ox: Float, oy: Float,
+    xx: Float, xy: Float,
+    yx: Float, yy: Float,
+    path: Path
+) {
+    val n = shape.size
+    fun at(i: Int): Offset {
+        val p = shape[((i % n) + n) % n]
+        return Offset(ox + xx * p.x + yx * p.y, oy + xy * p.x + yy * p.y)
+    }
+    path.reset()
+    val first = at(0)
+    path.moveTo(first.x, first.y)
+    for (i in 0 until n) {
+        val a = at(i - 1)
+        val b = at(i)
+        val c = at(i + 1)
+        val d = at(i + 2)
+        path.cubicTo(
+            b.x + (c.x - a.x) / 6f, b.y + (c.y - a.y) / 6f,
+            c.x - (d.x - b.x) / 6f, c.y - (d.y - b.y) / 6f,
+            c.x, c.y
+        )
+    }
+    path.close()
+}
+
+/** Half-span of the traced ear pair, in head radii. Kept modest so the ears
+ *  read as a quiet accent on the silhouette, not a second character. */
+private const val EAR_WIDTH = 0.74f
+
+/** Global tip-height damping on top of the pose perk — the same "less is
+ *  more" intent as [EAR_WIDTH]: cat, but understated. */
+private const val EAR_TIP_DAMP = 0.9f
+
+/** The tallest pose perk in [earPoseFor] — [CAT_FIT] budgets the canvas for it. */
+private const val EAR_PERK_MAX = 1.20f
+
+/** How far the ear bases sit below the crown, in head radii. Deep enough that the body swallows the base curve at every pose, shallow enough that a good stretch of ear still shows. */
+private const val EAR_SINK = 0.45f
+
+/**
+ * How much smaller cat mode draws the bot, so the ear tips land where the
+ * plain bot's crown does and the footprint the host padded for is unchanged.
+ * A tip reaches `1 - EAR_SINK + EAR_TIP_Y * EAR_WIDTH * perk * EAR_TIP_DAMP`
+ * head radii above centre, worst case at [EAR_PERK_MAX].
+ */
+private const val CAT_FIT = 1f /
+    (1f - EAR_SINK + EAR_TIP_Y * EAR_WIDTH * EAR_PERK_MAX * EAR_TIP_DAMP)
+
+/**
+ * Two ears at the crown, from the measured pair in [EAR_LEFT] / [EAR_RIGHT].
+ *
+ * The pair is placed as one piece, in the orientation it was traced at, so the
+ * ears keep the lean and spacing they were drawn with. The frame is rebuilt
+ * every frame from the crown of the live body outline — position and outward
+ * normal both — so the ears ride whatever squash, stretch or morph the current
+ * state is in. Because the caller paints the body OVER the ear bases — or, in
+ * line art, clips this drawing to outside the body outline — the join is
+ * always hidden: attachment no longer depends on the base curve landing
+ * exactly on the outline.
+ *
+ * One shape per ear, in the body's own paint: a silhouette accent, not a
+ * second character with its own colours.
+ */
+private fun DrawScope.drawCatEars(
+    points: List<Offset>,
+    color: Color,
+    chrome: ChromeBrushes?,
+    outline: Boolean,
+    sizePx: Float,
+    perk: Float,
+    splayDeg: Float,
+    twitchDeg: Float,
+    twitchSide: Int,
+    path: Path
+) {
+    val n = points.size
+    if (n < 8) return
+    val ballR = sizePx * BotEngine.RADIUS_FRACTION
+    val half = ballR * EAR_WIDTH
+    val sink = ballR * EAR_SINK
+
+    val crown = points[n * 3 / 4]
+    val crownLen = kotlin.math.hypot(crown.x, crown.y)
+    if (crownLen < 1e-3f) return
+    // Outward at the crown, and its perpendicular: the pair's up and right.
+    val ux = crown.x / crownLen
+    val uy = crown.y / crownLen
+    val e1x = -uy * half
+    val e1y = ux * half
+    val e2x = ux * half
+    val e2y = uy * half
+
+    for (side in intArrayOf(-1, 1)) {
+        val shape = if (side < 0) EAR_LEFT else EAR_RIGHT
+        val pivot = if (side < 0) EAR_LEFT_PIVOT else EAR_RIGHT_PIVOT
+        val pose = (splayDeg + (if (side == twitchSide) twitchDeg else 0f))
+            .coerceIn(-EAR_SPLAY_LIMIT, EAR_SPLAY_LIMIT)
+        val deg = -side * pose
+        val rad = deg * PI.toFloat() / 180f
+        val c = cos(rad)
+        val sn = sin(rad)
+
+        val ox = crown.x - ux * sink + e1x * pivot * (1f - c) - e2x * pivot * sn
+        val oy = crown.y - uy * sink + e1y * pivot * (1f - c) - e2y * pivot * sn
+        val xx = e1x * c + e2x * sn
+        val xy = e1y * c + e2y * sn
+        val yx = (-e1x * sn + e2x * c) * perk * EAR_TIP_DAMP
+        val yy = (-e1y * sn + e2y * c) * perk * EAR_TIP_DAMP
+
+        tracedPath(shape, ox, oy, xx, xy, yx, yy, path)
+        when {
+            outline -> drawPath(
+                path = path,
+                color = color,
+                style = Stroke(width = ballR * 0.06f, cap = StrokeCap.Round)
+            )
+            chrome != null -> drawPath(path, brush = chrome.body)
+            else -> drawPath(path, color = color)
+        }
+    }
 }
 
 private fun DrawScope.drawEye(
