@@ -247,11 +247,19 @@ public fun MaterialBot(
                 }
             }
             frame.dots.forEach { drawDot(it, config.color, inkColor, drawPx, bodyPath) }
-            frame.eyes.forEach {
-                drawEye(
-                    it, inkColor, eyeSrcPath, eyeDstPath, eyeMatrix,
-                    glow = chrome?.eyesGlow == true
-                )
+            // Eyes belong ON the body, never across its edge: clipped to the
+            // silhouette, a gaze that drifts to the rim gets cut by the form
+            // instead of sliding off it — the read of a solid 3D shape rather
+            // than a face pasted on a disc. Rebuilt here because drawDot
+            // borrows bodyPath for tears.
+            buildBodyPath(frame.bodyPoints, bodyPath)
+            clipPath(bodyPath) {
+                frame.eyes.forEach {
+                    drawEye(
+                        it, inkColor, eyeSrcPath, eyeDstPath, eyeMatrix,
+                        glow = chrome?.eyesGlow == true
+                    )
+                }
             }
             frame.notif?.let {
                 drawCircle(
