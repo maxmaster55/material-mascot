@@ -18,7 +18,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -95,17 +94,25 @@ public fun MaterialBot(
     // does, and every host's margin and padding around `size` still holds.
     val drawPx = if (config.cat) sizePx * CAT_FIT else sizePx
 
-    var frameMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    // Kept as the state OBJECT and never read with `by` at composable scope.
+    // A `by` read here — or any read during composition, which is what
+    // rememberUpdatedState(frameMs) used to be — subscribes this composable to
+    // a value that changes every frame, so every bot on screen recomposed at
+    // display refresh rate. The draw lambda and the effects below read
+    // `.longValue` instead: draw-phase and effect reads invalidate only the
+    // canvas' draw, which is what the sampling comment further down promises.
+    //
+    // Seeded from nanoTime, not currentTimeMillis: withFrameNanos reports the
+    // Choreographer's nanoTime-based frame clock, so an epoch seed made the
+    // very first tick jump the bot's clock ~1.7e9 seconds BACKWARDS.
+    val frameMs = remember { mutableLongStateOf(System.nanoTime() / 1_000_000L) }
     LaunchedEffect(Unit) {
         while (true) {
-            withFrameNanos { frameMs = it / 1_000_000L }
+            withFrameNanos { frameMs.longValue = it / 1_000_000L }
         }
     }
 
     val engine = remember { BotEngine(config.initialState) }
-    // Read the ticker's CURRENT value when a state change lands: mixing clocks
-    // here (epoch vs uptime nanos) would make every morph complete instantly.
-    val latestFrameMs by rememberUpdatedState(frameMs)
 
     // Poke reaction: a tap makes the bot wink at you for a moment, whatever
     // state it is in. Pure delight, no configuration needed.
@@ -121,7 +128,9 @@ public fun MaterialBot(
 
     LaunchedEffect(shownState) {
         if (engine.state != shownState) {
-            engine.setState(shownState, latestFrameMs)
+            // Read inside the effect, not in composition: same current value,
+            // without subscribing the composable to the per-frame ticker.
+            engine.setState(shownState, frameMs.longValue)
         }
     }
 
@@ -129,12 +138,15 @@ public fun MaterialBot(
     // and low when sleepy or sad. Animated rather than snapped so they arrive
     // with the body morph instead of popping ahead of it.
     val earPose = earPoseFor(shownState)
-    val earPerk by animateFloatAsState(
+    // Held as State and read in the draw lambda for the same reason as the
+    // frame ticker: reading `.value` here with `by` would recompose the bot on
+    // every frame of the 420ms ear tween.
+    val earPerk = animateFloatAsState(
         targetValue = if (config.cat) earPose.perk else 1f,
         animationSpec = tween(durationMillis = 420),
         label = "earPerk"
     )
-    val earSplay by animateFloatAsState(
+    val earSplay = animateFloatAsState(
         targetValue = if (config.cat) earPose.splay else 0f,
         animationSpec = tween(durationMillis = 420),
         label = "earSplay"
@@ -182,8 +194,9 @@ public fun MaterialBot(
         // frame invalidates only this canvas' draw — not recomposition.
         // Sampling during composition made every visible bot rebuild its
         // whole composable at display refresh rate.
+        val now = frameMs.longValue
         val frame = engine.sample(
-            nowMs = frameMs,
+            nowMs = now,
             scalePx = drawPx,
             reducedMotion = !config.motion,
             energy = config.energy,
@@ -196,14 +209,14 @@ public fun MaterialBot(
         val inkColor = if (outline) config.color else config.eyeColor
         translate(this.center.x, this.center.y) {
             val silhouette = if (config.cat) {
-                val twitch = if (config.motion) earTwitch(frameMs, config.energy) else 0f
+                val twitch = if (config.motion) earTwitch(now, config.energy) else 0f
                 catSilhouette(
                     points = frame.bodyPoints,
                     ballness = frame.ballness,
-                    perk = earPerk,
-                    splayDeg = earSplay,
+                    perk = earPerk.value,
+                    splayDeg = earSplay.value,
                     twitchDeg = twitch,
-                    twitchSide = twitchSide(frameMs),
+                    twitchSide = twitchSide(now),
                     out = catPoints
                 )
             } else {
