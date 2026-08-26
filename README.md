@@ -3,7 +3,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![API](https://img.shields.io/badge/API-26%2B-brightgreen.svg)](https://android-arsenal.com/api?level=26)
 
-A living bot avatar for Android / Jetpack Compose — a faithful Kotlin/Canvas port of **bloub**, the MIT-licensed SVG recreation of the x.ai Grok avatar. Everything is drawn at runtime — no image assets — as one filled silhouette with two capsule eyes, morphing between poses with measured, frame-by-frame-fitted geometry. The bot has no mouth: it emotes through eye shape, body squash and motion.
+A living bot avatar for Jetpack Compose — **Android and desktop (JVM)** — a faithful Kotlin/Canvas port of **bloub**, the MIT-licensed SVG recreation of the x.ai Grok avatar. Everything is drawn at runtime — no image assets — as one filled silhouette with two capsule eyes, morphing between poses with measured, frame-by-frame-fitted geometry. The bot has no mouth: it emotes through eye shape, body squash and motion.
+
+The renderer, animation engine and mood/state APIs are pure `commonMain` Kotlin Multiplatform — the only Android-specific piece is the optional shake-to-dizzy sensor/vibrator reaction (`ShakeDizzyController`/`ShakeDizzyEffect`), which has no desktop equivalent and lives in `androidMain`. Everything else — `MaterialBot`, `LiveBot`, `BotStage`, the mood bus, `LocalShakeDizzy`/`dizzyWobble` — runs identically on a `jvm("desktop")` target via Compose Multiplatform, including a plain desktop window (see [`docs/desktop-overlay.md`](docs/desktop-overlay.md) for notes on running it as an always-on-top transparent overlay on Linux).
 
 <p>
   <img src="docs/img/state-idle.svg" width="88" alt="idle">
@@ -30,10 +32,11 @@ A living bot avatar for Android / Jetpack Compose — a faithful Kotlin/Canvas p
 
 | | |
 |---|---|
-| Min SDK | 26 |
-| Compile SDK | 36 |
+| Targets | `androidTarget()`, `jvm("desktop")` |
+| Min SDK (Android) | 26 |
+| Compile SDK (Android) | 36 |
 | Kotlin | 2.2.0+ |
-| Compose (BOM era) | Foundation/UI 1.9+, Material3 |
+| Compose Multiplatform | 1.9.3+ (Foundation/UI, Material3) |
 
 ## Setup
 
@@ -59,9 +62,33 @@ dependencyResolutionManagement {
 ```
 
 ```kotlin
-// build.gradle.kts
+// build.gradle.kts (Android-only consumer)
 dependencies {
     implementation("com.maxmaster.materialmascot:mascot:1.0.0")
+}
+```
+
+From a Kotlin Multiplatform consumer, depend on it per source set instead — put `ShakeDizzyController`/`ShakeDizzyEffect` calls behind `androidMain`, everything else is safe in `commonMain`:
+
+```kotlin
+// build.gradle.kts (KMP consumer)
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            implementation("com.maxmaster.materialmascot:mascot:1.0.0")
+        }
+    }
+}
+```
+
+A plain desktop entry point needs nothing beyond the usual Compose Multiplatform `application {}` boilerplate:
+
+```kotlin
+// desktopMain
+fun main() = application {
+    Window(onCloseRequest = ::exitApplication) {
+        MaterialBot(config = MascotConfig())
+    }
 }
 ```
 

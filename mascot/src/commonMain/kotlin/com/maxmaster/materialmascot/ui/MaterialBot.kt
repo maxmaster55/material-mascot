@@ -27,8 +27,8 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.StrokeCap
@@ -41,7 +41,6 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.maxmaster.materialmascot.config.MascotConfig
 import com.maxmaster.materialmascot.config.MascotFinish
@@ -175,9 +174,8 @@ public fun MaterialBot(
     val tearPath = remember { Path() }
     // The body outline with the ears merged into it, refilled every frame.
     val catPoints = remember { ArrayList<Offset>(CAT_SAMPLES) }
-    val eyeSrcPath = remember { Path() }
     val eyeDstPath = remember { Path() }
-    val eyeMatrix = remember { android.graphics.Matrix() }
+    val eyeMatrix = remember { Matrix() }
 
     Canvas(
         // The poke reaction always fires; a host action rides along with it,
@@ -247,7 +245,7 @@ public fun MaterialBot(
             clipPath(bodyPath) {
                 frame.eyes.forEach {
                     drawEye(
-                        it, inkColor, eyeSrcPath, eyeDstPath, eyeMatrix,
+                        it, inkColor, eyeDstPath, eyeMatrix,
                         glow = chrome?.eyesGlow == true
                     )
                 }
@@ -608,23 +606,29 @@ private fun smoothMax(a: Float, b: Float, k: Float): Float {
 private fun DrawScope.drawEye(
     eye: RenderedEye,
     color: Color,
-    src: Path,
     dst: Path,
-    matrix: android.graphics.Matrix,
+    matrix: Matrix,
     glow: Boolean = false
 ) {
     val corner = minOf(eye.wPx, eye.hPx) / 2f
-    src.rewind()
-    src.addRoundRect(RoundRect(0f, 0f, eye.wPx, eye.hPx, CornerRadius(corner, corner)))
+    // Built straight into dst and transformed in place: Compose's
+    // Path.transform mutates the receiver, unlike the platform Path.transform
+    // that read from a separate source, so the second scratch Path this used
+    // to need is gone. Both objects are still caller-owned and reused across
+    // frames — nothing here allocates per frame.
+    dst.rewind()
+    dst.addRoundRect(RoundRect(0f, 0f, eye.wPx, eye.hPx, CornerRadius(corner, corner)))
+    // The engine emits a 2D affine transform (a, b, c, d, tx, ty); Compose's
+    // Matrix is a 4x4 in column-major order, so the six values land at these
+    // indices and everything else stays identity.
     matrix.reset()
-    matrix.setValues(
-        floatArrayOf(
-            eye.a, eye.c, eye.tx,
-            eye.b * eye.blinkK, eye.d * eye.blinkK, eye.ty,
-            0f, 0f, 1f
-        )
-    )
-    src.asAndroidPath().transform(matrix, dst.asAndroidPath())
+    matrix.values[Matrix.ScaleX] = eye.a
+    matrix.values[Matrix.SkewY] = eye.b * eye.blinkK
+    matrix.values[Matrix.SkewX] = eye.c
+    matrix.values[Matrix.ScaleY] = eye.d * eye.blinkK
+    matrix.values[Matrix.TranslateX] = eye.tx
+    matrix.values[Matrix.TranslateY] = eye.ty
+    dst.transform(matrix)
     if (glow && eye.alpha > 0f) {
         // Two expanding copies at falling alpha read as bloom without a blur
         // mask filter, which fights hardware acceleration on some devices.
@@ -637,81 +641,4 @@ private fun DrawScope.drawEye(
         }
     }
     drawPath(path = dst, color = color, alpha = eye.alpha)
-}
-
-// --- Previews ---
-
-@Preview(showBackground = true, backgroundColor = 0xFF0B0B0D)
-@Composable
-private fun PreviewChromeIdle() {
-    MaterialBot(
-        config = MascotConfig(
-            state = BotState.Idle,
-            color = Color(0xFF14161A),
-            size = 120.dp,
-            finish = MascotFinish.CHROME
-        )
-    )
-}
-
-@Preview(showBackground = true, backgroundColor = 0xFF0B0B0D)
-@Composable
-private fun PreviewChromeHappy() {
-    MaterialBot(
-        config = MascotConfig(
-            state = BotState.Happy,
-            color = Color(0xFF14161A),
-            size = 120.dp,
-            finish = MascotFinish.CHROME
-        )
-    )
-}
-
-@Preview(showBackground = true, backgroundColor = 0xFF0B0B0D)
-@Composable
-private fun PreviewChromeNarrating() {
-    MaterialBot(
-        config = MascotConfig(
-            state = BotState.Narrating,
-            color = Color(0xFF14161A),
-            size = 120.dp,
-            finish = MascotFinish.CHROME
-        )
-    )
-}
-
-@Preview(showBackground = true, backgroundColor = 0xFF121212)
-@Composable
-private fun PreviewIdle() {
-    MaterialBot(
-        config = MascotConfig(
-            state = BotState.Idle,
-            color = Color(0xFF0A0A0C),
-            size = 120.dp
-        )
-    )
-}
-
-@Preview(showBackground = true, backgroundColor = 0xFF121212)
-@Composable
-private fun PreviewHappy() {
-    MaterialBot(
-        config = MascotConfig(
-            state = BotState.Happy,
-            color = Color(0xFF0A0A0C),
-            size = 120.dp
-        )
-    )
-}
-
-@Preview(showBackground = true, backgroundColor = 0xFF121212)
-@Composable
-private fun PreviewAlert() {
-    MaterialBot(
-        config = MascotConfig(
-            state = BotState.Alert,
-            color = Color(0xFF0A0A0C),
-            size = 120.dp
-        )
-    )
 }

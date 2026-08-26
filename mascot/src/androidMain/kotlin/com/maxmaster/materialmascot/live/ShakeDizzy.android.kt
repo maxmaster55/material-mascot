@@ -1,5 +1,5 @@
 /*
- * Material Mascot — a living bot avatar for Android apps.
+ * Material Mascot — a living bot avatar for Compose apps.
  * Copyright (C) 2026 Max Master
  * SPDX-License-Identifier: MIT
  */
@@ -18,18 +18,13 @@ import android.os.VibratorManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.abs
 import kotlin.math.min
-import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlinx.coroutines.isActive
 
@@ -37,8 +32,10 @@ import kotlinx.coroutines.isActive
  * "Shaken too hard" detector: accumulates dizziness from accelerometer spikes,
  * buzzes back lightly, and decays on its own so the bot sobers up in seconds.
  *
- * The level is observable state READ INSIDE draw-phase lambdas (graphicsLayer),
- * so the wobble never triggers recomposition — only redraws.
+ * Android-only, because it is the accelerometer and the vibration motor that
+ * make it work — the dizziness *state* it produces is common (see
+ * [DizzySource]), so every platform can render a wobble even though only this
+ * one can cause it.
  */
 public class ShakeDizzyController(
     private val context: Context,
@@ -48,18 +45,11 @@ public class ShakeDizzyController(
      * vibration motor.
      */
     private val vibrationEnabled: () -> Boolean = { true }
-) : SensorEventListener {
+) : SensorEventListener, DizzySource {
 
-    /** Current dizziness: 0 = sober, 1+ = very dizzy.
-     *
-     * Backed by snapshot state intended to be read inside draw-phase lambdas
-     * (graphicsLayer), so watching it costs redraws only — never recomposition.
-     * Hosts may also read it in composition (e.g. swap the face past
-     * [DIZZY_FACE_THRESHOLD]); writes happen only inside the library. */
-    public val level = mutableFloatStateOf(0f)
+    override val level = mutableFloatStateOf(0f)
 
-    /** Frame phase for the wobble; advanced only while dizzy. Draw-phase observable. */
-    public val phase = mutableFloatStateOf(0f)
+    override val phase = mutableFloatStateOf(0f)
 
     private var lastShakeAt = 0L
 
@@ -144,9 +134,6 @@ public class ShakeDizzyController(
     }
 }
 
-/** Above this dizziness the bot's face gives up and goes Silly. */
-public const val DIZZY_FACE_THRESHOLD = 0.25f
-
 /**
  * Installs the sensor listener for the current lifecycle and drives both the
  * wobble clock and the sobering-up decay while anyone is actually dizzy.
@@ -182,7 +169,6 @@ public fun ShakeDizzyEffect(controller: ShakeDizzyController) {
                 last = now
                 if (controller.level.floatValue > 0f) {
                     controller.phase.floatValue += dt * WOBBLE_HZ
-                    // Sober up in roughly two and a half seconds of calm.
                     controller.level.floatValue =
                         (controller.level.floatValue - dt * SOBER_RATE).coerceAtLeast(0f)
                 }
@@ -190,31 +176,3 @@ public fun ShakeDizzyEffect(controller: ShakeDizzyController) {
         }
     }
 }
-
-/**
- * Wobble transform for a dizzy bot: a decaying roll plus a horizontal stagger.
- * Reads draw-phase state only, so it costs recomposition exactly zero.
- * Pass [enabled] = false to honour reduced-motion preferences.
- *
- * This is applied automatically by [LiveBot]. Use directly if rendering
- * [MaterialBot] yourself and you want the shake wobble.
- *
- * @param controller A [ShakeDizzyController] from [ShakeDizzyEffect], or null to disable.
- * @param enabled If false, the modifier is a no-op (respects reduced-motion).
- */
-public fun Modifier.dizzyWobble(controller: ShakeDizzyController?, enabled: Boolean = true): Modifier =
-    composed {
-        if (controller == null || !enabled) return@composed this
-        val level by controller.level
-        val phase by controller.phase
-        graphicsLayer {
-            val d = level
-            if (d <= 0.01f) return@graphicsLayer
-            val p = phase.toFloat()
-            rotationZ = sin(p * 2f) * 14f * min(d, 1f)
-            translationX = sin(p * 3.4f) * 7f * min(d, 1f)
-        }
-    }
-
-private const val WOBBLE_HZ = 9f
-private const val SOBER_RATE = 0.42f

@@ -7,8 +7,8 @@
 package com.maxmaster.materialmascot.live
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.maxmaster.materialmascot.config.MascotConfig
 import com.maxmaster.materialmascot.engine.BotState
 import com.maxmaster.materialmascot.ui.MaterialBot
@@ -45,8 +45,15 @@ public fun LiveBot(
 ) {
     // App-wide operations speak through the status bus; screens may shout
     // over it with an explicit state, but nobody escapes being dizzy.
+    //
+    // collectAsState, not collectAsStateWithLifecycle: the latter is
+    // Android-Lifecycle-specific and has no multiplatform equivalent. The
+    // difference is only whether collection pauses while an Android Activity
+    // is backgrounded — it does not touch what is drawn or how, so this is
+    // not a visual/animation change, just the correct primitive for code
+    // that also runs on desktop.
     val bus = LocalMascotStatus.current
-    val busState = bus?.state?.collectAsStateWithLifecycle()?.value
+    val busState = bus?.state?.collectAsState()?.value
     val statusDriven = if (busState == null || busState.status == MascotStatus.IDLE) {
         config.state
     } else {

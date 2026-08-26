@@ -64,13 +64,14 @@ public object BotStage {
 public val LocalMascotStatus = staticCompositionLocalOf<MascotStatusBus?> { null }
 
 /**
- * The activity-wide [ShakeDizzyController], provided at the app root next to
+ * The app-wide [DizzySource], provided at the app root next to
  * [LocalMascotStatus].
  *
- * The controller is constructed and owned by the host (see
- * [ShakeDizzyEffect] for the recommended installation), so it is public API:
- * hosts create it, provide it here, and any [LiveBot] or custom renderer
- * reading this local picks up shake-to-dizzy. Null where the feature is not
- * installed; consumers must treat null as "no wobble, no Silly face".
+ * The source is constructed and owned by the host — on Android that means a
+ * `ShakeDizzyController` installed via `ShakeDizzyEffect` — so it is public
+ * API: hosts create it, provide it here, and any [LiveBot] or custom renderer
+ * reading this local picks up the wobble. Null where the feature is not
+ * installed, which is simply the normal state on a platform with nothing to
+ * shake; consumers must treat null as "no wobble, no Silly face".
  */
-public val LocalShakeDizzy = staticCompositionLocalOf<ShakeDizzyController?> { null }
+public val LocalShakeDizzy = staticCompositionLocalOf<DizzySource?> { null }
