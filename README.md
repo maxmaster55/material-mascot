@@ -3,30 +3,37 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![API](https://img.shields.io/badge/API-26%2B-brightgreen.svg)](https://android-arsenal.com/api?level=26)
 
-A living bot avatar for Jetpack Compose — **Android and desktop (JVM)** — a faithful Kotlin/Canvas port of **bloub**, the MIT-licensed SVG recreation of the x.ai Grok avatar. Everything is drawn at runtime — no image assets — as one filled silhouette with two capsule eyes, morphing between poses with measured, frame-by-frame-fitted geometry. The bot has no mouth: it emotes through eye shape, body squash and motion.
+A living bot avatar for Compose Multiplatform — **Android and desktop (JVM)**. Everything is drawn at runtime, with no image assets. The bot has no mouth: it emotes through eye shape, body squash, motion and small props.
 
-The renderer, animation engine and mood/state APIs are pure `commonMain` Kotlin Multiplatform — the only Android-specific piece is the optional shake-to-dizzy sensor/vibrator reaction (`ShakeDizzyController`/`ShakeDizzyEffect`), which has no desktop equivalent and lives in `androidMain`. Everything else — `MaterialBot`, `LiveBot`, `BotStage`, the mood bus, `LocalShakeDizzy`/`dizzyWobble` — runs identically on a `jvm("desktop")` target via Compose Multiplatform, including a plain desktop window (see [`docs/desktop-overlay.md`](docs/desktop-overlay.md) for notes on running it as an always-on-top transparent overlay on Linux).
+The drawing is done by **[`mascot-core`](mascot-core/README.md)**, a Rust crate in this repository with no dependencies, no heap and `no_std`, so the same mascot also runs on a microcontroller or in WebAssembly. This Kotlin library is a thin wrapper around it: it keeps the state machine, asks the core for a frame over JNI, and shows it in a Compose `Canvas`. The `live` package (mood bus, stage claim, shake-to-dizzy) is plain Kotlin; only the shake sensor is Android-specific.
 
-<p>
-  <img src="docs/img/state-idle.svg" width="88" alt="idle">
-  <img src="docs/img/state-happy.svg" width="88" alt="happy">
-  <img src="docs/img/state-thinking.svg" width="88" alt="thinking">
-  <img src="docs/img/state-notify.svg" width="88" alt="notify">
-  <img src="docs/img/state-sleepy.svg" width="88" alt="sleepy">
-  <img src="docs/img/state-play.svg" width="88" alt="play">
+The project began as a Kotlin port of **bloub**, the MIT-licensed SVG recreation of the x.ai Grok avatar.
+
+<p align="center">
+  <img src="docs/img/hero.gif" width="240" alt="The mascot morphing between states">
+</p>
+
+<p align="center">
+  <img src="docs/img/state-idle.gif" width="88" alt="idle">
+  <img src="docs/img/state-happy.gif" width="88" alt="happy">
+  <img src="docs/img/state-thinking.gif" width="88" alt="thinking">
+  <img src="docs/img/state-love.gif" width="88" alt="love">
+  <img src="docs/img/state-sleepy.gif" width="88" alt="sleepy">
+  <img src="docs/img/state-ghost.gif" width="88" alt="ghost">
+  <img src="docs/img/state-star.gif" width="88" alt="star">
 </p>
 
 ## Features
 
-- **Zero assets**: single filled silhouette, 64-point radial profiles, capsule eyes on a sphere
-- **26 states**: see the [gallery](#state-gallery) below
-- **3 finishes**: `FLAT`, `CHROME`, `OUTLINE` — same silhouette and animation, different paint
-- **Deterministic animation**: pure function of time — pause, resume, seek and slow-mo produce identical frames
-- **Life at rest**: gaze drift, saccades, glances, blinks, micro-fidgets
-- **5 eye personalities**: `CLASSIC`, `BIG`, `ROUND`, `DOT`, `VIZOR` — applied as a transform so expressions keep their character
-- **Living-companion mode**: app-wide mood bus, shake-to-dizzy sensor reaction, single big-companion stage claim (`live` package, first-class public API)
-- **Accessibility first**: `motion = false` kills decorative motion but keeps blinking/breathing essentials (WCAG reduced-motion)
-- **Tap interaction**: tap the bot → it winks at you (Happy state for ~1.1 s)
+- **Zero assets**: every body is a signed distance field, so any shape morphs into any other
+- **49 states**: 23 emotions, 18 objects, and the 8 original shape morphs — see the [gallery](#state-gallery)
+- **7 finishes**: `FLAT`, `CHROME`, `OUTLINE`, `CLAY`, `NEON`, `PIXEL`, `LED` — same shapes and animation, different paint
+- **8 eye personalities**: `GROK`, `CLASSIC`, `BIG`, `ROUND`, `PUPIL`, `BLOCK`, `VIZOR`, `DOT`
+- **Deterministic animation**: a pure function of time — pause, resume, seek and slow-mo produce identical frames
+- **Life at rest**: gaze that holds and jumps, and blinking
+- **Living-companion mode**: app-wide mood bus, shake-to-dizzy sensor reaction, single big-companion stage claim (`live` package)
+- **Reduced motion**: `motion = false` turns off idle gaze wander and blinking
+- **Tap interaction**: tap the bot and it lights up (Happy state for ~1.1 s)
 
 ## Requirements
 
@@ -37,6 +44,7 @@ The renderer, animation engine and mood/state APIs are pure `commonMain` Kotlin 
 | Compile SDK (Android) | 36 |
 | Kotlin | 2.2.0+ |
 | Compose Multiplatform | 1.9.3+ (Foundation/UI, Material3) |
+| To build from source | Rust (`cargo`); for Android also the NDK and `cargo-ndk`. See [Building Locally](#building-locally). |
 
 ## Setup
 
@@ -119,7 +127,7 @@ fun Mascot() {
 }
 ```
 
-### Colour, size, energy, eye style, finish
+### Colour, size, eye style, finish
 
 ```kotlin
 import androidx.compose.runtime.Composable
@@ -139,7 +147,6 @@ fun BlueReader() {
             color = Color(0xFF2496E8),        // body ink
             eyeColor = Color.White,           // eyes, and dots painted on the body
             size = 120.dp,
-            energy = 1.2f,                    // 1.0 = measured calm, 1.9 = default
             eyeStyle = EyeStyle.BIG,
             finish = MascotFinish.CHROME
         )
@@ -147,7 +154,7 @@ fun BlueReader() {
 }
 ```
 
-`energy` is clamped to `0.5f..2.5f` internally. `eyeStyle` reshapes whatever dimensions the current pose prescribes, so expressions keep their character (a Happy squint stays a squint).
+`eyeStyle` reshapes the plain eye of each state; expression shapes (hearts, happy arcs, chevrons) keep their meaning. For full control over shading and accent colours pass a `palette` instead of `color`/`eyeColor`: `MascotPalette.Grape`, `Ink`, `Ember`, `Mint`, `Handheld`, or your own.
 
 ### Driving state from your own app state
 
@@ -189,7 +196,7 @@ Note the explicit `BotState` type: `BotState.Idle` on its own infers the singlet
 
 ### The bot as a button
 
-`onClick` runs in addition to the built-in poke reaction (the wink), so the bot can carry a real action without losing the delight of prodding it. Leave it `null` and the bot stays decorative.
+`onClick` runs in addition to the built-in poke reaction (a moment of Happy), so the bot can carry a real action without losing the delight of prodding it. Leave it `null` and the bot stays decorative.
 
 ```kotlin
 import androidx.compose.runtime.Composable
@@ -210,7 +217,7 @@ fun AssistantButton(onOpenAssistant: () -> Unit) {
 
 ### Accessibility
 
-`contentDescription` adds a semantics node with that label; `null` (the default) omits it entirely, which is what a purely decorative bot next to text that already says the same thing should do. `motion = false` drops decorative transitions and keeps only the life essentials (blink, gaze, breath).
+`contentDescription` adds a semantics node with that label; `null` (the default) omits it entirely, which is what a purely decorative bot next to text that already says the same thing should do. `motion = false` turns off idle life (gaze wander and blinking); the state's own animation still plays.
 
 ```kotlin
 import android.provider.Settings
@@ -244,67 +251,73 @@ fun NarratorBot(isNarrating: Boolean) {
 
 ## State Gallery
 
-Static approximations drawn from each state's own pose geometry (`BotState.kt`), with life-at-rest and blinking switched off. On device they all breathe, drift and blink.
+Every state in the default finish, recorded from the Rust core. Any state morphs into any other in half a second.
 
-### Calm and attentive
+### Conversation
 
-| | | | | | |
-|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="docs/img/state-idle.svg" width="80" alt="idle"> | <img src="docs/img/state-listening.svg" width="80" alt="listening"> | <img src="docs/img/state-reading.svg" width="80" alt="reading"> | <img src="docs/img/state-narrating.svg" width="80" alt="narrating"> | <img src="docs/img/state-responding.svg" width="80" alt="responding"> | <img src="docs/img/state-proud.svg" width="80" alt="proud"> |
-| `Idle` | `Listening` | `Reading` | `Narrating` | `Responding` | `Proud` |
+| <img src="docs/img/state-idle.gif" width="88" alt="Idle"> | <img src="docs/img/state-listening.gif" width="88" alt="Listening"> | <img src="docs/img/state-thinking.gif" width="88" alt="Thinking"> | <img src="docs/img/state-working.gif" width="88" alt="Working"> | <img src="docs/img/state-responding.gif" width="88" alt="Responding"> | <img src="docs/img/state-narrating.gif" width="88" alt="Narrating"> | <img src="docs/img/state-reading.gif" width="88" alt="Reading"> |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `Idle` | `Listening` | `Thinking` | `Working` | `Responding` | `Narrating` | `Reading` |
 
-`Listening` is the widest pose in the set: eyes 0.36 x 0.88 ball-radius units, low on the body.
-
-### Busy
-
-| | |
+| <img src="docs/img/state-alert.gif" width="88" alt="Alert"> | <img src="docs/img/state-notify.gif" width="88" alt="Notify"> |
 |:-:|:-:|
-| <img src="docs/img/state-thinking.svg" width="80" alt="thinking"> | <img src="docs/img/state-working.svg" width="80" alt="working"> |
-| `Thinking` | `Working` |
+| `Alert` | `Notify` |
 
-Both hide the face and orbit three dots around the belly; `Working` is the alias for background work that is not user-facing "thinking".
+### Emotions
 
-### Warm and celebratory
+| <img src="docs/img/state-happy.gif" width="88" alt="Happy"> | <img src="docs/img/state-smile.gif" width="88" alt="Smile"> | <img src="docs/img/state-wink.gif" width="88" alt="Wink"> | <img src="docs/img/state-laugh.gif" width="88" alt="Laugh"> | <img src="docs/img/state-excited.gif" width="88" alt="Excited"> | <img src="docs/img/state-love.gif" width="88" alt="Love"> | <img src="docs/img/state-proud.gif" width="88" alt="Proud"> |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `Happy` | `Smile` | `Wink` | `Laugh` | `Excited` | `Love` | `Proud` |
 
-| | | | | |
-|:-:|:-:|:-:|:-:|:-:|
-| <img src="docs/img/state-happy.svg" width="80" alt="happy"> | <img src="docs/img/state-smile.svg" width="80" alt="smile"> | <img src="docs/img/state-greet.svg" width="80" alt="greet"> | <img src="docs/img/state-love.svg" width="80" alt="love"> | <img src="docs/img/state-silly.svg" width="80" alt="silly"> |
-| `Happy` | `Smile` | `Greet` | `Love` | `Silly` |
+| <img src="docs/img/state-greet.gif" width="88" alt="Greet"> | <img src="docs/img/state-confused.gif" width="88" alt="Confused"> | <img src="docs/img/state-silly.gif" width="88" alt="Silly"> | <img src="docs/img/state-sad.gif" width="88" alt="Sad"> | <img src="docs/img/state-sleepy.gif" width="88" alt="Sleepy"> | <img src="docs/img/state-angry.gif" width="88" alt="Angry"> | <img src="docs/img/state-dizzy.gif" width="88" alt="Dizzy"> |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `Greet` | `Confused` | `Silly` | `Sad` | `Sleepy` | `Angry` | `Dizzy` |
 
-`Happy` winks — one eye stays a capsule, the other becomes a dash. `Smile` closes both into mirrored arcs. The specks off `Greet`'s shoulder are the wave.
+### Objects
 
-### Trouble and low energy
+| <img src="docs/img/state-heart.gif" width="88" alt="Heart"> | <img src="docs/img/state-star.gif" width="88" alt="Star"> | <img src="docs/img/state-droplet.gif" width="88" alt="Droplet"> | <img src="docs/img/state-cloud.gif" width="88" alt="Cloud"> | <img src="docs/img/state-ghost.gif" width="88" alt="Ghost"> | <img src="docs/img/state-bubble.gif" width="88" alt="Bubble"> | <img src="docs/img/state-bulb.gif" width="88" alt="Bulb"> |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `Heart` | `Star` | `Droplet` | `Cloud` | `Ghost` | `Bubble` | `Bulb` |
 
-| | | | | | |
-|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="docs/img/state-alert.svg" width="80" alt="alert"> | <img src="docs/img/state-exclaim.svg" width="80" alt="exclaim"> | <img src="docs/img/state-notify.svg" width="80" alt="notify"> | <img src="docs/img/state-confused.svg" width="80" alt="confused"> | <img src="docs/img/state-sad.svg" width="80" alt="sad"> | <img src="docs/img/state-sleepy.svg" width="80" alt="sleepy"> |
-| `Alert` | `Exclaim` | `Notify` | `Confused` | `Sad` | `Sleepy` |
+| <img src="docs/img/state-gear.gif" width="88" alt="Gear"> | <img src="docs/img/state-moon.gif" width="88" alt="Moon"> | <img src="docs/img/state-flame.gif" width="88" alt="Flame"> | <img src="docs/img/state-bolt.gif" width="88" alt="Bolt"> | <img src="docs/img/state-diamond.gif" width="88" alt="Diamond"> | <img src="docs/img/state-bell.gif" width="88" alt="Bell"> | <img src="docs/img/state-check.gif" width="88" alt="Check"> |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `Gear` | `Moon` | `Flame` | `Bolt` | `Diamond` | `Bell` | `Check` |
 
-`Notify`'s badge is the one hardcoded colour in the library (`NOTIF_BLUE`, `0xFF2496E8`). `Sleepy`'s dot is the dream bubble, drifting up and popping every 2.8 s.
+| <img src="docs/img/state-cross.gif" width="88" alt="Cross"> | <img src="docs/img/state-magnifier.gif" width="88" alt="Magnifier"> | <img src="docs/img/state-hourglass.gif" width="88" alt="Hourglass"> | <img src="docs/img/state-cat.gif" width="88" alt="Cat"> |
+|:-:|:-:|:-:|:-:|
+| `Cross` | `Magnifier` | `Hourglass` | `Cat` |
+
+`Bubble`, `Bolt`, `Check`, `Cross`, `Magnifier` and `Hourglass` have no face.
 
 ### Shape morphs
 
-| | | | | | | |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="docs/img/state-egg.svg" width="80" alt="egg"> | <img src="docs/img/state-hexagon.svg" width="80" alt="hexagon"> | <img src="docs/img/state-play.svg" width="80" alt="play"> | <img src="docs/img/state-orbit.svg" width="80" alt="orbit"> | <img src="docs/img/state-burst.svg" width="80" alt="burst"> | <img src="docs/img/state-comet.svg" width="80" alt="comet"> | <img src="docs/img/state-swirl.svg" width="80" alt="swirl"> |
-| `Egg` | `Hexagon` | `Play` | `Orbit` | `Burst` | `Comet` | `Swirl` |
+| <img src="docs/img/state-egg.gif" width="88" alt="Egg"> | <img src="docs/img/state-hexagon.gif" width="88" alt="Hexagon"> | <img src="docs/img/state-play.gif" width="88" alt="Play"> | <img src="docs/img/state-exclaim.gif" width="88" alt="Exclaim"> | <img src="docs/img/state-burst.gif" width="88" alt="Burst"> | <img src="docs/img/state-comet.gif" width="88" alt="Comet"> | <img src="docs/img/state-orbit.gif" width="88" alt="Orbit"> | <img src="docs/img/state-swirl.gif" width="88" alt="Swirl"> |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `Egg` | `Hexagon` | `Play` | `Exclaim` | `Burst` | `Comet` | `Orbit` | `Swirl` |
 
-`Burst` and `Comet` are caught mid-collapse: both shrink the ball to a pebble and grow it back on a loop, so most of the cycle has no face. `Orbit` and `Swirl` are shown with their `ArcSpec` rings — those rings live in `BotFrame.arcs` for custom renderers; `MaterialBot` paints body, dots, eyes and badge only, so on device `Swirl` currently reads as a plain resting ball.
+`Burst` and `Comet` shrink the ball to a pebble and grow it back on a loop.
 
 ## Finishes
 
-`MascotFinish` changes only the paint — silhouette, poses and timing are identical.
+`MascotFinish` changes only the paint — shapes, poses and timing are identical.
 
-| <img src="docs/img/finish-flat.svg" width="96" alt="FLAT finish"> | <img src="docs/img/finish-chrome.svg" width="96" alt="CHROME finish"> | <img src="docs/img/finish-outline.svg" width="96" alt="OUTLINE finish"> |
-|:-:|:-:|:-:|
-| `FLAT` | `CHROME` | `OUTLINE` |
-| One solid fill in `color`, eyes in `eyeColor`. The reference look, and how the bot was measured. Default. | Gradient body (lit above, falling into shadow at the base), rim light, one upper-left specular highlight, a ground contact shadow, and bloom around the eyes. Every tone is derived from `color`, so a mint bot gets the same lit-metal treatment as a near-black one. | Line art: the body stroked and never filled, at `ball radius * 0.06` so the line keeps its weight at any `size`. Eyes are drawn in `color` too — with no fill behind them, `eyeColor` eyes would sit on the page instead of in the bot. Reads on any background, including photos and coloured cards. |
+| <img src="docs/img/finish-flat.gif" width="96" alt="FLAT"> | <img src="docs/img/finish-chrome.gif" width="96" alt="CHROME"> | <img src="docs/img/finish-outline.gif" width="96" alt="OUTLINE"> | <img src="docs/img/finish-clay.gif" width="96" alt="CLAY"> | <img src="docs/img/finish-neon.gif" width="96" alt="NEON"> | <img src="docs/img/finish-pixel.gif" width="96" alt="PIXEL"> | <img src="docs/img/finish-led.gif" width="96" alt="LED"> |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `FLAT` | `CHROME` | `OUTLINE` | `CLAY` | `NEON` | `PIXEL` | `LED` |
+
+| Finish | Look |
+|---|---|
+| `FLAT` | One solid fill with smooth edges. Default. |
+| `CHROME` | Body lit from above, rim light, a soft highlight, a ground shadow, and bloom around the eyes (skipped when the eyes are not brighter than the body). |
+| `OUTLINE` | Line art: the body stroked and never filled, eyes in the same ink. Reads on any background. |
+| `CLAY` | Smooth 3D shading. |
+| `NEON` | Line art with a glow. |
+| `PIXEL` | Pixel art on a `pixelGrid`-cell grid, shaded per `pixelShade` (`LIT`, `SOFT`, `FLAT`). |
+| `LED` | The pixel grid shown as round dots. |
 
 ```kotlin
 MascotConfig(finish = MascotFinish.OUTLINE, color = MaterialTheme.colorScheme.onSurface)
 ```
-
-`CHROME` skips the eye bloom automatically when `eyeColor` is not meaningfully brighter than `color` — blooming a dark eye on a pale body only paints grey rings around it.
 
 ## MascotConfig
 
@@ -313,18 +326,21 @@ MascotConfig(finish = MascotFinish.OUTLINE, color = MaterialTheme.colorScheme.on
 | `enabled` | `Boolean` | `true` | Whether the mascot is visible. `false` composes nothing. |
 | `state` | `BotState` | `BotState.Idle` | Current emotional/operational state; changing it morphs. |
 | `initialState` | `BotState` | `BotState.Idle` | State shown on first composition, before any state change. |
-| `color` | `Color` | `Color(0xFF0A0A0C)` | Body fill (bloub's 'encre' ink); also the ink for eyes and stroke in `OUTLINE`. |
-| `eyeColor` | `Color` | `Color.White` | Eye fill, and the fill of dots painted on the body. |
+| `color` | `Color` | `Color(0xFF0A0A0C)` | Body colour. Shading tones are derived from it. Ignored when `palette` is set. |
+| `eyeColor` | `Color` | `Color.White` | Eye colour. Ignored when `palette` is set. |
 | `size` | `Dp` | `64.dp` | Canvas size. |
-| `motion` | `Boolean` | `true` | `false` disables decorative transitions but keeps life (breath, gaze drift, blinking) per accessibility guidelines. |
-| `energy` | `Float` | `1.9f` | Liveliness multiplier: `1.0` = measured calm of the reference video, `~1.6` = cheerful and active. Scales gaze drift speed, blink cadence, breathing and floating amplitude. Clamped to `0.5..2.5`. |
-| `eyeStyle` | `EyeStyle` | `EyeStyle.CLASSIC` | Eye shape personality transform. |
-| `finish` | `MascotFinish` | `MascotFinish.FLAT` | How the body is painted. `FLAT` renders identically to before this option existed. |
-| `cat` | `Boolean` | `false` | Cat look: pointed ears on the crown, posed and twitching with the state. Rides on top of any finish and eye style. |
+| `motion` | `Boolean` | `true` | `false` turns off idle gaze wander and blinking. |
+| `energy` | `Float` | `1.9f` | Kept for source compatibility; the Rust core has one fixed liveliness, so this currently has no effect. |
+| `eyeStyle` | `EyeStyle` | `EyeStyle.GROK` | Eye personality. |
+| `finish` | `MascotFinish` | `MascotFinish.FLAT` | How the bot is painted. |
+| `cat` | `Boolean` | `false` | Cat ears on the resting ball. |
+| `palette` | `MascotPalette?` | `null` | Full colour set; `null` derives one from `color` and `eyeColor`. |
+| `pixelGrid` | `Int` | `32` | Cells across for `PIXEL` and `LED`. |
+| `pixelShade` | `PixelShade` | `LIT` | Body shading for `PIXEL` and `LED`. |
+| `maxFps` | `Int` | `30` | Upper bound on repaints per second; `0` repaints every display frame. |
+| `maxRenderPx` | `Int` | `256` | Upper bound on the rendered frame's side in pixels. A larger bot is rendered at this size and scaled up. |
 
-`size` is the layout box the composable occupies. The ball itself is drawn with radius `size * 100/158` around the centre — roughly 1.27x the box across — and is not clipped, so leave padding around a bot that sits next to other content.
-
-`cat = true` keeps that same footprint: the ears reach above the crown, so the whole drawing is scaled down until the tips land where the earless crown would. The bot is a little smaller with ears on, and no layout has to change to fit them.
+`size` is the layout box the composable occupies, and nothing is drawn outside it. The ball is 60% of the box across, which leaves room inside for props such as the Zzz, the badge and the speech bubble.
 
 ## MaterialBot
 
@@ -338,7 +354,7 @@ public fun MaterialBot(
 )
 ```
 
-Animates autonomously off the frame clock. Sampling happens in the draw phase, so a new frame invalidates only this canvas' draw and never triggers recomposition.
+Animates autonomously off the frame clock. The frame is rendered in the draw phase, so a new frame invalidates only this canvas' draw and never triggers recomposition. If the native core cannot be loaded the bot degrades to a plain ball; `BotEngine.nativeError` says why.
 
 ## The Living Companion: LiveBot
 
@@ -431,81 +447,95 @@ val dizzy = LocalShakeDizzy.current
 MaterialBot(
     config = MascotConfig(
         state = if (dizzy != null && dizzy.level.floatValue > DIZZY_FACE_THRESHOLD)
-            BotState.Silly else myState
+            BotState.Dizzy else myState
     ),
     modifier = Modifier.dizzyWobble(dizzy, enabled = motionAllowed)
 )
 ```
 
-For a fully custom canvas, drive [`BotEngine`](mascot/src/main/java/com/maxmaster/materialmascot/engine/BotEngine.kt) directly: `sample(nowMs, scalePx, ...)` is a pure function returning a `BotFrame` of body points, eyes, dots, arcs and the badge.
+For your own surface, drive [`BotEngine`](mascot/src/commonMain/kotlin/com/maxmaster/materialmascot/engine/BotEngine.kt) directly. `render` is a pure function of time that fills an `IntArray` with straight-alpha ARGB pixels:
+
+```kotlin
+val engine = BotEngine(BotState.Idle)
+engine.setState(BotState.Happy, nowMs)
+
+val pixels = IntArray(128 * 128)
+engine.render(nowMs, 128, pixels, RenderStyle(finish = MascotFinish.CLAY, palette = MascotPalette.Grape))
+```
 
 ## Eye Personality
 
 ```kotlin
-MascotConfig(state = BotState.Idle, eyeStyle = EyeStyle.BIG)
+MascotConfig(state = BotState.Idle, eyeStyle = EyeStyle.CLASSIC)
 ```
 
-| Value | Effect on the pose's own dimensions |
+| <img src="docs/img/eyes-grok.gif" width="80" alt="GROK"> | <img src="docs/img/eyes-classic.gif" width="80" alt="CLASSIC"> | <img src="docs/img/eyes-big.gif" width="80" alt="BIG"> | <img src="docs/img/eyes-round.gif" width="80" alt="ROUND"> | <img src="docs/img/eyes-pupil.gif" width="80" alt="PUPIL"> | <img src="docs/img/eyes-block.gif" width="80" alt="BLOCK"> | <img src="docs/img/eyes-visor.gif" width="80" alt="VIZOR"> | <img src="docs/img/eyes-dot.gif" width="80" alt="DOT"> |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `GROK` | `CLASSIC` | `BIG` | `ROUND` | `PUPIL` | `BLOCK` | `VIZOR` | `DOT` |
+
+| Value | Look |
 |---|---|
-| `CLASSIC` | Unchanged: the measured reference look, tall capsules. Default. |
-| `BIG` | `w * 1.55`, `h * 1.32` — the grokbots look, reads at a glance. |
-| `ROUND` | `max(w, h) * 1.18` on both axes: curious cartoon mascot. |
-| `DOT` | Fixed `0.085 x 0.085`: beady, understated, slightly mischievous. |
-| `VIZOR` | `w * 1.7`, `h * 0.45` — wide horizontal slits, robotic and deadpan. |
+| `GROK` | Giant glossy ovals, set a little wider apart. Default. |
+| `CLASSIC` | Tall capsules: the original measured look. |
+| `BIG` | Classic, scaled up. |
+| `ROUND` | Circles. |
+| `PUPIL` | Wide whites with a dark pupil that follows the gaze. |
+| `BLOCK` | Square-cornered. |
+| `VIZOR` | Wide horizontal slits, robotic and deadpan. |
+| `DOT` | Small beads. Drops lid expressions. |
+
+## Palettes
+
+```kotlin
+MascotConfig(state = BotState.Happy, palette = MascotPalette.Ember)
+```
+
+| <img src="docs/img/palette-grape.gif" width="96" alt="Grape"> | <img src="docs/img/palette-ink.gif" width="96" alt="Ink"> | <img src="docs/img/palette-ember.gif" width="96" alt="Ember"> | <img src="docs/img/palette-mint.gif" width="96" alt="Mint"> | <img src="docs/img/palette-handheld.gif" width="96" alt="Handheld"> |
+|:-:|:-:|:-:|:-:|:-:|
+| `Grape` | `Ink` | `Ember` | `Mint` | `Handheld` |
+
+Or build your own with `MascotPalette.fromBody(...)`, or just pass `color` and `eyeColor`.
 
 ## BotState Reference
 
-| State | Description | Morph | Periodic |
-|-------|-------------|-------|----------|
-| `Idle` | Calm breathing ball (bob + slow swell) | 0.32s | 3.4s breath |
-| `Listening` | Wide surprised eyes | 0.38s | Static |
-| `Thinking` | 3 dots orbiting the belly, no face | 0.28s | 2.4s orbit |
-| `Working` | Same animation as Thinking | 0.28s | 2.4s orbit |
-| `Responding` | Lively ball, raised gaze | 0.32s | 0.8s bounce |
-| `Alert` | Stretched ball vibrating at 2.5 Hz | 0.32s | 400ms buzz |
-| `Happy` | Wink | 0.22s | Static |
-| `Confused` | Mismatched mirrored tilts | 0.28s | Static |
-| `Sleepy` | Small breathing ball + dream bubble | 0.5s | 2.8s cycle |
-| `Notify` | Round eyes + blue badge pop | 0.35s | Static |
-| `Narrating` | Reading aloud, lowered gaze | 0.32s | 1.1s bob |
-| `Sad` | Droopy mirrored tilts, sigh rhythm | 0.35s | 3.2s cycle |
-| `Love` | Round shining eyes, giddy sway | 0.28s | 1.4s sway |
-| `Silly` | Crossed mismatched tilts, goofball | 0.3s | Static |
-| `Egg` | Egg-shaped body | 0.4s | Static |
-| `Hexagon` | Hexagonal body | 0.4s | Static |
-| `Play` | Tumbling rounded triangle | 0.5s | 3s tumble |
-| `Burst` | Collapse to pebble + spiral sparkles | 0.4s | 2.6s cycle |
-| `Comet` | Shrink to comet dot + trail | 0.45s | 2.4s cycle |
-| `Exclaim` | Upright "!" glyph | 0.45s | Static |
-| `Orbit` | Triangle tumble + concentric rings | 0.6s | 3.4s cycle |
-| `Swirl` | Compressed ring flourish | 0.35s | 1s cycle |
-| `Smile` | Warm two-eyed smile arcs, body lifted | 0.26s | 3.2s breath |
-| `Greet` | Lean-in hello hops + shoulder wave flick | 0.34s | 2.6s cycle |
-| `Reading` | Eyes sweeping text lines, soft return | 0.32s | 2.6s sweep |
-| `Proud` | Slow chest-up settle, warm half-lids | 0.6s | 3.6s breath |
+All 49 states are listed in the [gallery](#state-gallery); each object's KDoc describes it. `BotState.all` holds them in that order. `BotState.fromName("thinking")` does a case-insensitive lookup and falls back to `Idle`.
 
-`BotState.all` is exactly this list, in this order. `BotState.fromName("thinking")` does a case-insensitive lookup and falls back to `Idle`. The "Periodic" column is `posePeriodMs`: hosts that tile the animation (widget loop frames) sweep exactly that period so the wrap stays seamless.
+Every state change morphs over `BotEngine.MORPH_MS` (500 ms). `posePeriodMs` is the length of a state's main loop; several states layer motions of different lengths, so treat it as the dominant rhythm rather than an exact tiling period.
+
+**Changed from the first version:** `Happy` is now a two-eyed joyful hop (the wink moved to `Wink`), `Working` is its own pose instead of a copy of `Thinking`, and `LiveBot` shows `Dizzy` rather than `Silly` when shaken.
 
 ## Public API Surface
 
-**config/** — `MascotConfig`, `MascotFinish`
+**config/** — `MascotConfig`, `MascotFinish`, `MascotPalette`
 **ui/** — `MaterialBot`
-**engine/** — `BotEngine`, `BotFrame`, `RenderedEye`, `NotifBadge`, `DotSpec`, `NotifSpec`, `ArcSpec`, `ORBIT_RINGS`, `BotState` (+26 objects), `EyeStyle`
+**engine/** — `BotEngine`, `RenderStyle`, `PixelShade`, `BotState` (+49 objects), `EyeStyle`
 **live/** — `LiveBot`, `MascotStatusBus`, `MascotStatus`, `MascotBusState`, `ShakeDizzyController`, `ShakeDizzyEffect`, `dizzyWobble`, `DIZZY_FACE_THRESHOLD`, `BotStage`, `LocalMascotStatus`, `LocalShakeDizzy`
 
-Everything under `engine` that is geometry/math plumbing (`Pose`, `Silhouette`, `Face`, `HeadGaze`, `EyeCfg`, easings, PRNG) is `internal` and not part of the API contract. The `sample` package is `internal` too.
+The geometry types of the first version (`BotFrame`, `RenderedEye`, `NotifBadge`, `DotSpec`, `ArcSpec`, `BotEngine.sample`) are gone: geometry now lives in the Rust core, and `BotEngine.render` returns finished pixels. The `sample` package is `internal`.
 
 ## ProGuard / R8
 
-Consumer rules ship inside the AAR (`consumer-rules.pro`) and pin only the public API surface — no androidx/coroutines keeps leak into your app. Nothing here uses reflection, so R8 full mode works out of the box.
+Consumer rules ship inside the AAR (`consumer-rules.pro`). They pin the public API surface and keep the one class whose native methods the Rust core binds by name. No androidx/coroutines keeps leak into your app.
 
 ## Building Locally
 
+The Gradle build compiles the Rust core for you, so it needs `cargo` on the `PATH`. The Android build also needs the NDK, `cargo-ndk`, and the Android Rust targets:
+
 ```bash
-./gradlew :mascot:testDebugUnitTest     # unit tests
-./gradlew :mascot:assembleRelease       # release AAR -> mascot/build/outputs/aar/
+cargo install cargo-ndk
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+```
+
+```bash
+cargo test                              # the Rust core on its own
+./gradlew :mascot:desktopTest           # Kotlin tests against the real core (desktop)
+./gradlew :mascot:assembleRelease       # release AAR, with the core for arm64-v8a, armeabi-v7a, x86_64
 ./gradlew :mascot:publishToMavenLocal   # AAR + POM + sources + javadoc jars
 ```
+
+The desktop jar carries the core for the machine it was built on only.
+
+The animations in this README are recorded from the core: `tools/make-gifs.sh` regenerates them (needs ImageMagick).
 
 ## License
 

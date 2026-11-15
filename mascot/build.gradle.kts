@@ -89,6 +89,83 @@ android {
 // this is still a plain Android build-type configuration (AGP creates it
 // regardless of the Kotlin Multiplatform wrapper), so it stays outside the
 // kotlin{} source-set DSL rather than living in androidMain.
+// ---------------------------------------------------------------- Rust core
+//
+// All drawing happens in the Rust workspace at the repository root
+// (mascot-core, reached through the mascot-jni bridge). These tasks build it
+// and put the library where each target looks for it.
+//
+// Needs `cargo` on the PATH. The Android build additionally needs the NDK and
+// `cargo install cargo-ndk`, plus the Rust targets:
+//   rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+
+val rustRoot = rootProject.layout.projectDirectory
+val rustSources = files(
+    rustRoot.file("Cargo.toml"),
+    rustRoot.dir("mascot-core/src"), rustRoot.file("mascot-core/Cargo.toml"),
+    rustRoot.dir("mascot-jni/src"), rustRoot.file("mascot-jni/Cargo.toml")
+)
+
+val hostOs: String = System.getProperty("os.name").lowercase().let {
+    when {
+        "win" in it -> "windows"
+        "mac" in it || "darwin" in it -> "macos"
+        else -> "linux"
+    }
+}
+val hostArch: String = System.getProperty("os.arch").lowercase().let {
+    if (it == "aarch64" || it == "arm64") "aarch64" else "x86_64"
+}
+
+val cargoBuildDesktop by tasks.registering(Exec::class) {
+    group = "rust"
+    description = "Builds the Rust core for this machine."
+    workingDir = rustRoot.asFile
+    commandLine("cargo", "build", "--release", "-p", "mascot-jni")
+    inputs.files(rustSources)
+    outputs.dir(rustRoot.dir("target/release"))
+}
+
+val copyDesktopNative by tasks.registering(Sync::class) {
+    group = "rust"
+    description = "Packages the host Rust library as a desktop resource."
+    dependsOn(cargoBuildDesktop)
+    from(rustRoot.dir("target/release")) {
+        include("libmascot_jni.so", "libmascot_jni.dylib", "mascot_jni.dll")
+        into("native/$hostOs-$hostArch")
+    }
+    into(layout.buildDirectory.dir("rust/desktop"))
+}
+
+// Registering the task itself as a resource directory makes everything that
+// reads desktop resources (the jar, the tests, the sources jar) depend on it.
+// The desktop loader extracts the library from the jar at startup.
+kotlin.sourceSets.named("desktopMain") {
+    resources.srcDir(copyDesktopNative)
+}
+
+val androidJniLibs = layout.buildDirectory.dir("rust/jniLibs")
+
+val cargoBuildAndroid by tasks.registering(Exec::class) {
+    group = "rust"
+    description = "Builds the Rust core for every Android ABI (needs the NDK and cargo-ndk)."
+    workingDir = rustRoot.asFile
+    commandLine(
+        "cargo", "ndk",
+        "-t", "arm64-v8a", "-t", "armeabi-v7a", "-t", "x86_64",
+        "-o", androidJniLibs.get().asFile.absolutePath,
+        "build", "--release", "-p", "mascot-jni"
+    )
+    inputs.files(rustSources)
+    outputs.dir(androidJniLibs)
+}
+
+android.sourceSets.getByName("main").jniLibs.srcDir(androidJniLibs)
+
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }.configureEach {
+    dependsOn(cargoBuildAndroid)
+}
+
 dependencies {
     add("debugImplementation", "androidx.compose.ui:ui-tooling:1.9.3")
 }
@@ -105,9 +182,9 @@ publishing {
         pom {
             name.set("Material Mascot")
             description.set(
-                "A living bot avatar for Compose Multiplatform — a faithful " +
-                    "Kotlin/Canvas port of bloub, the MIT-licensed SVG recreation of " +
-                    "the x.ai Grok avatar. Everything is drawn at runtime — no image assets."
+                "A living bot avatar for Compose Multiplatform, drawn at runtime by a " +
+                    "dependency-free Rust core — no image assets. Began as a port of bloub, " +
+                    "the MIT-licensed SVG recreation of the x.ai Grok avatar."
             )
             url.set(prop("publish.url", "https://github.com/maxmaster/material-mascot"))
 

@@ -17,7 +17,7 @@ import com.maxmaster.materialmascot.ui.MaterialBot
  * THE companion bot of an app. Wrap [MaterialBot] once and render this
  * everywhere instead, so exactly one place decides what the bot is feeling:
  *
- *  1. A shake hard enough to dizzy it always wins (Silly face + wobble).
+ *  1. A shake hard enough to dizzy it always wins (Dizzy face + wobble).
  *  2. An explicit [state] override from a screen that knows better
  *     (Thinking while refreshing, Narrating in the player, ...).
  *  3. Otherwise the shared status bus ([LocalMascotStatus]) drives the mood,
@@ -68,7 +68,7 @@ public fun LiveBot(
 
     val dizzy = LocalShakeDizzy.current
     val shown =
-        if (dizzy != null && dizzy.level.floatValue > DIZZY_FACE_THRESHOLD) BotState.Silly
+        if (dizzy != null && dizzy.level.floatValue > DIZZY_FACE_THRESHOLD) BotState.Dizzy
         else state ?: statusDriven
 
     MaterialBot(

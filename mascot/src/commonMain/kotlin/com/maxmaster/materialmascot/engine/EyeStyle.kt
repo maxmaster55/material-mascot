@@ -7,40 +7,35 @@
 package com.maxmaster.materialmascot.engine
 
 /**
- * Personality for the eyes, applied as a transform on whatever dimensions the
- * current state's pose prescribes — so expressions keep their character
- * (Happy squints, Listening widens) while the overall look shifts.
+ * Personality for the eyes.
  *
- * Dimensions are in ball-radius units, matching Face.EYE_W / EYE_H.
+ * A style reshapes the plain eye of every state; expression shapes (hearts,
+ * happy arcs, chevrons) keep their meaning, so a wink stays a wink.
  *
- * Use with [MascotConfig.eyeStyle] or pass directly to [BotEngine.sample].
+ * Use with [com.maxmaster.materialmascot.config.MascotConfig.eyeStyle].
  */
-public enum class EyeStyle(val apply: (Float, Float) -> Pair<Float, Float>) {
-    /**
-     * The measured reference look: tall capsules as in the original bloub design.
-     */
-    CLASSIC({ w, h -> w to h }),
+public enum class EyeStyle(internal val nativeId: Int) {
+    /** Giant glossy ovals, set a little wider apart. */
+    GROK(0),
 
-    /**
-     * The grokbots look: eyes scaled way up so the face reads at a glance.
-     */
-    BIG({ w, h -> (w * 1.55f) to (h * 1.32f) }),
+    /** Tall capsules: the original measured look. */
+    CLASSIC(1),
 
-    /**
-     * Big and perfectly circular: curious cartoon mascot.
-     */
-    ROUND({ w, h ->
-        val s = maxOf(w, h) * 1.18f
-        s to s
-    }),
+    /** Classic, scaled up so the face reads at a glance. */
+    BIG(2),
 
-    /**
-     * Beady little dots: understated, slightly mischievous.
-     */
-    DOT({ _, _ -> 0.085f to 0.085f }),
+    /** Big and perfectly circular: curious cartoon mascot. */
+    ROUND(3),
 
-    /**
-     * Wide horizontal visor slits: robotic, deadpan.
-     */
-    VIZOR({ w, h -> (w * 1.7f) to (h * 0.45f) })
+    /** Wide whites with a dark pupil that follows the gaze. */
+    PUPIL(4),
+
+    /** Square-cornered. */
+    BLOCK(5),
+
+    /** Wide horizontal visor slits: robotic, deadpan. */
+    VIZOR(6),
+
+    /** Beady little dots: understated, slightly mischievous. */
+    DOT(7)
 }

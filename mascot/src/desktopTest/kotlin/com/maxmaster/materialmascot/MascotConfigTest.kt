@@ -3,7 +3,9 @@ package com.maxmaster.materialmascot
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.maxmaster.materialmascot.config.MascotConfig
+import com.maxmaster.materialmascot.config.MascotFinish
 import com.maxmaster.materialmascot.engine.BotState
+import com.maxmaster.materialmascot.engine.EyeStyle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -19,6 +21,9 @@ class MascotConfigTest {
         assertEquals(64.dp, config.size)
         assertEquals(Color(0xFF0A0A0C), config.color)
         assertEquals(Color.White, config.eyeColor)
+        assertEquals(EyeStyle.GROK, config.eyeStyle)
+        assertEquals(MascotFinish.FLAT, config.finish)
+        assertEquals(null, config.palette)
     }
 
     @Test
@@ -40,18 +45,17 @@ class MascotConfigTest {
     }
 
     @Test
-    fun all_states_are_registered() {
-        // Order matches BotState.all
-        val expected = listOf(
-            BotState.Idle, BotState.Listening, BotState.Thinking, BotState.Responding,
-            BotState.Alert, BotState.Happy, BotState.Confused, BotState.Sleepy,
-            BotState.Notify, BotState.Working, BotState.Narrating, BotState.Sad,
-            BotState.Love, BotState.Silly, BotState.Egg, BotState.Hexagon,
-            BotState.Play, BotState.Burst, BotState.Comet, BotState.Exclaim,
-            BotState.Orbit, BotState.Swirl,
-            BotState.Smile, BotState.Greet, BotState.Reading, BotState.Proud
+    fun all_states_are_registered_once() {
+        assertEquals(49, BotState.all.size)
+        assertEquals(BotState.all.size, BotState.all.map { it.name }.toSet().size)
+        // The original 26 are all still here under the same names.
+        val original = listOf(
+            "idle", "listening", "thinking", "responding", "alert", "happy", "confused", "sleepy",
+            "notify", "working", "narrating", "sad", "love", "silly", "egg", "hexagon", "play",
+            "burst", "comet", "exclaim", "orbit", "swirl", "smile", "greet", "reading", "proud"
         )
-        assertEquals(expected, BotState.all)
+        val names = BotState.all.map { it.name }
+        original.forEach { assertTrue("$it is missing", it in names) }
     }
 
     @Test

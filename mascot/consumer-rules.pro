@@ -1,8 +1,7 @@
 # Material Mascot — consumer ProGuard/R8 rules.
 #
-# The library is pure Jetpack Compose + Canvas: nothing is reached via
-# reflection or JNI, so R8 may shrink, optimize and obfuscate everything a
-# consuming app does not reference. The rule below only pins the library's
+# Nothing is reached via reflection, so R8 may shrink, optimize and obfuscate
+# everything a consuming app does not reference. The first rule only pins the
 # public API surface so it survives aggressive consumer configs: crash
 # reports keep readable names and Java interop callers never see stripped
 # members.
@@ -15,4 +14,11 @@
 -keep public class com.maxmaster.materialmascot.** {
     public <init>(...);
     public *;
+}
+
+# The Rust core finds these methods by their exact JNI names
+# (Java_com_maxmaster_materialmascot_engine_NativeMascot_*), so neither the
+# class nor its native methods may be renamed or removed.
+-keep class com.maxmaster.materialmascot.engine.NativeMascot {
+    native <methods>;
 }

@@ -1,0 +1,13 @@
+[package]
+name = "mascot-jni"
+version = "0.1.0"
+edition = "2021"
+description = "JNI bridge from the Kotlin/Compose library to mascot-core. No dependencies beyond the core."
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+mascot-core = { path = "../mascot-core" }

@@ -1,0 +1,11 @@
+[package]
+name = "mascot-core"
+version = "0.1.0"
+edition = "2021"
+description = "A living mascot renderer: no dependencies, no_std, no heap. A pure function of time that paints into any pixel sink."
+license = "MIT"
+repository = "https://github.com/maxmaster/material-mascot"
+keywords = ["mascot", "no_std", "embedded", "graphics", "animation"]
+categories = ["no-std", "embedded", "graphics", "rendering"]
+
+[dependencies]
